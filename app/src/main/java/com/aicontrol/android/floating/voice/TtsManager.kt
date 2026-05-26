@@ -1,7 +1,9 @@
 package com.aicontrol.android.floating.voice
 
 import android.content.Context
+import android.os.Bundle
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import java.util.Locale
 
@@ -10,6 +12,11 @@ import java.util.Locale
  *
  * 封装 Android TextToSpeech，用于朗读 AI 回复文本。
  * 支持中文语音，自动过滤 JSON 动作块和代码块。
+ *
+ * 关键设计：
+ * - 使用 UtteranceProgressListener 监听播报完成事件
+ * - speak() 中先 stop() 再延时 speak，避免 TTS 引擎还没停就写入新文本导致丢失
+ * - stop() 后 100ms 延时确保 TTS 引擎完成清理
  *
  * 使用方式：
  *   val tts = TtsManager(context)
@@ -20,13 +27,24 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
 
     companion object {
         private const val TAG = "TtsManager"
+        /** stop() 后等待 TTS 引擎就绪的延时 */
+        private const val STOP_DELAY_MS = 100L
     }
 
     var isReady: Boolean = false
         private set
 
+    /** 是否正在播报 */
+    var isSpeaking: Boolean = false
+        private set
+
     @Volatile
     private var lastSpokenText: String = ""
+
+    /** 等待播报的文本队列（stop 后延时代播） */
+    private var pendingText: String? = null
+
+    private val ttsHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     private var tts: TextToSpeech? = TextToSpeech(context.applicationContext, this)
 
@@ -41,9 +59,29 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
             val rate = com.aicontrol.android.utils.KVUtils.getTtsSpeechRate()
             val pitch = com.aicontrol.android.utils.KVUtils.getTtsPitch()
             val locale = try { Locale.forLanguageTag(lang) } catch (_: Exception) { Locale.CHINESE }
-            it.setLanguage(locale)
+            val result = it.setLanguage(locale)
+            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                Log.w(TAG, "TTS language '$lang' not supported, falling back to Chinese")
+                it.setLanguage(Locale.CHINESE)
+            }
             it.setSpeechRate(rate)
             it.setPitch(pitch)
+            it.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {
+                    isSpeaking = true
+                    Log.i(TAG, "TTS start speaking: $utteranceId")
+                }
+
+                override fun onDone(utteranceId: String?) {
+                    isSpeaking = false
+                    Log.i(TAG, "TTS done speaking: $utteranceId")
+                }
+
+                override fun onError(utteranceId: String?) {
+                    isSpeaking = false
+                    Log.w(TAG, "TTS error on: $utteranceId")
+                }
+            })
         }
         isReady = true
         Log.i(TAG, "TTS initialized (lang=$lang)")
@@ -52,37 +90,85 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
     /**
      * 朗读文本
      * - 自动过滤 JSON 动作块、代码块、多余空白
-     * - 如果文本为空或与上次朗读内容相同则跳过
+     * - 如果正在播报，先停止再延时播报新文本
+     * - 如果文本为空则跳过
      */
     fun speak(text: String) {
         if (!isReady) {
-            Log.w(TAG, "TTS not ready")
+            Log.w(TAG, "TTS not ready, queuing: $text")
+            pendingText = text
             return
         }
         val sanitized = sanitizeForTts(text)
-        if (sanitized.isEmpty() || sanitized == lastSpokenText) {
-            return
+        if (sanitized.isEmpty()) return
+
+        // 清除之前的延时代播
+        ttsHandler.removeCallbacksAndMessages(null)
+
+        if (isSpeaking) {
+            // 正在播报中：先 stop，延时后再播
+            Log.i(TAG, "TTS busy, stopping then queuing: $sanitized")
+            internalStop()
+            pendingText = sanitized
+            ttsHandler.postDelayed({
+                doSpeak(pendingText ?: sanitized)
+                pendingText = null
+            }, STOP_DELAY_MS)
+        } else {
+            // 空闲状态：直接播（但如果刚 stop 过，给一点缓冲）
+            if (lastSpokenText.isNotEmpty()) {
+                // 上一次播报刚结束，直接清除缓存播新的
+                lastSpokenText = ""
+            }
+            doSpeak(sanitized)
         }
-        lastSpokenText = sanitized
-        tts?.speak(sanitized, TextToSpeech.QUEUE_FLUSH, null, "tts_stream")
     }
 
     /**
-     * 停止当前朗读
+     * 实际执行播报
      */
-    fun stop() {
+    private fun doSpeak(text: String) {
+        if (!isReady || text.isEmpty()) {
+            Log.w(TAG, "doSpeak skipped: ready=$isReady text='$text'")
+            return
+        }
+        lastSpokenText = text
+        val params = Bundle().apply {
+            putString(TextToSpeech.Engine.KEY_PARAM_UTTERANCE_ID, "car_${System.currentTimeMillis()}")
+        }
+        val result = tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "car_utterance")
+        Log.i(TAG, "TTS speak result=$result text='$text'")
+    }
+
+    /**
+     * 停止当前朗读（内部方法，不重置 pending）
+     */
+    private fun internalStop() {
         lastSpokenText = ""
         tts?.stop()
+    }
+
+    /**
+     * 停止当前朗读（公开方法）
+     */
+    fun stop() {
+        ttsHandler.removeCallbacksAndMessages(null)
+        pendingText = null
+        internalStop()
+        isSpeaking = false
     }
 
     /**
      * 释放 TTS 资源
      */
     fun shutdown() {
+        ttsHandler.removeCallbacksAndMessages(null)
+        pendingText = null
         tts?.stop()
         tts?.shutdown()
         tts = null
         isReady = false
+        isSpeaking = false
     }
 
     /**

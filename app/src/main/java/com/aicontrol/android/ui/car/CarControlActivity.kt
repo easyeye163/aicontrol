@@ -36,7 +36,8 @@ import java.net.URL
 /**
  * 小车控制界面 - 横屏模式
  * 左摇杆控制前后，右摇杆控制左右转向，中间3D停止按钮
- * 支持语音控制：按住语音按钮说话，松开后自动识别关键词控制+TTS播报
+ * 支持语音控制：点击语音按钮开启持续识别，自动检测声音停顿并识别，
+ * 识别完成后自动继续监听，再次点击按钮关闭持续识别
  */
 class CarControlActivity : BaseActivity() {
 
@@ -68,6 +69,8 @@ class CarControlActivity : BaseActivity() {
 
     // 语音控制
     private var isRecording = false
+    /** 持续识别模式：开启后识别完自动重新开始监听 */
+    private var isContinuousMode = false
     private var ttsManager: TtsManager? = null
     private var voiceController: VoiceInputController? = null
     private var localRecognizer: LocalSpeechRecognizer? = null
@@ -78,7 +81,7 @@ class CarControlActivity : BaseActivity() {
     ) { granted ->
         if (granted) {
             // 权限通过后自动开始录音
-            startRecording()
+            toggleContinuousVoice()
         } else {
             Toast.makeText(this, "需要录音权限才能使用语音控制", Toast.LENGTH_LONG).show()
         }
@@ -145,12 +148,13 @@ class CarControlActivity : BaseActivity() {
         super.onPause()
         handler.removeCallbacks(pingRunnable)
         handler.removeCallbacks(sendRunnable)
-        // 如果正在录音，取消录音（不销毁实例，onResume 可复用）
-        if (isRecording) {
+        // 如果正在持续识别，取消录音（不销毁实例，onResume 可复用）
+        if (isRecording || isContinuousMode) {
             voiceController?.destroy()
             voiceController = null
             localRecognizer?.cancel()
             isRecording = false
+            isContinuousMode = false
             updateVoiceButton(false)
             tvLastCmd.text = "就绪"
         }
@@ -175,30 +179,20 @@ class CarControlActivity : BaseActivity() {
             startActivity(Intent(this, CarControlSettingsActivity::class.java))
         }
 
-        // 语音按钮 — 按住说话，松开停止
-        findViewById<View>(R.id.btnVoice)?.setOnTouchListener { _, event ->
-            when (event.action) {
-                MotionEvent.ACTION_DOWN -> {
-                    // 先检查权限
-                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                        != PackageManager.PERMISSION_GRANTED) {
-                        recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                        return@setOnTouchListener true
-                    }
-                    // 本地语音不需要 API 配置，HTTP 语音需要检查
-                    if (!KVUtils.isSttUseLocal() && !KVUtils.hasSttConfig()) {
-                        Toast.makeText(this, "请先配置STT语音识别（设置 > 模型 > STT配置）\n或在STT设置中开启本地语音识别", Toast.LENGTH_LONG).show()
-                        return@setOnTouchListener true
-                    }
-                    startRecording()
-                    true
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    stopRecording()
-                    true
-                }
-                else -> false
+        // 语音按钮 — 点击切换持续识别模式
+        findViewById<View>(R.id.btnVoice)?.setOnClickListener {
+            // 先检查权限
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+                recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                return@setOnClickListener
             }
+            // 本地语音不需要 API 配置，HTTP 语音需要检查
+            if (!KVUtils.isSttUseLocal() && !KVUtils.hasSttConfig()) {
+                Toast.makeText(this, "请先配置STT语音识别（设置 > 模型 > STT配置）\n或在STT设置中开启本地语音识别", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            toggleContinuousVoice()
         }
 
         // 左摇杆 — 前后控制 (vertical)
@@ -260,48 +254,115 @@ class CarControlActivity : BaseActivity() {
         }
     }
 
-    // ==================== 语音控制（按住说话） ====================
+    // ==================== 语音控制（点击持续识别） ====================
+
+    /**
+     * 切换持续识别模式
+     * 点击一次开启 → 持续识别（识别完自动继续）
+     * 再点一次关闭 → 停止识别
+     */
+    private fun toggleContinuousVoice() {
+        if (isContinuousMode) {
+            // 关闭持续识别
+            stopContinuousVoice()
+        } else {
+            // 开启持续识别
+            startContinuousVoice()
+        }
+    }
+
+    private fun startContinuousVoice() {
+        isContinuousMode = true
+        updateVoiceButton(true)
+        tvLastCmd.text = "语音已开启"
+        XLog.i(TAG, "Continuous voice mode ON")
+        // 延迟 300ms 开始，让用户看到按钮变红
+        handler.postDelayed({
+            if (isContinuousMode) {
+                startListening()
+            }
+        }, 300)
+    }
+
+    private fun stopContinuousVoice() {
+        isContinuousMode = false
+        isRecording = false
+        // 取消当前识别
+        if (KVUtils.isSttUseLocal()) {
+            localRecognizer?.cancel()
+        } else {
+            voiceController?.destroy()
+            voiceController = null
+        }
+        updateVoiceButton(false)
+        tvLastCmd.text = "语音已关闭"
+        XLog.i(TAG, "Continuous voice mode OFF")
+    }
 
     private fun initVoice() {
         ttsManager = TtsManager(this)
         voiceController = VoiceInputController(this)
         voiceController?.listener = object : VoiceInputController.Listener {
             override fun onListeningStarted() {
-                runOnUiThread { tvLastCmd.text = "聆听中..." }
+                runOnUiThread {
+                    isRecording = true
+                    updateVoiceButton(true)
+                    tvLastCmd.text = "聆听中..."
+                }
             }
 
             override fun onTranscribing() {
                 runOnUiThread {
                     isRecording = false
-                    updateVoiceButton(false)
                     tvLastCmd.text = "识别中..."
                 }
             }
 
             override fun onFinalResult(text: String) {
-                runOnUiThread { processVoiceCommand(text) }
+                runOnUiThread {
+                    isRecording = false
+                    processVoiceCommand(text)
+                    // 持续识别模式下，识别完后自动重新开始
+                    if (isContinuousMode) {
+                        handler.postDelayed({
+                            if (isContinuousMode && !isRecording) {
+                                startListening()
+                            }
+                        }, 500)
+                    }
+                }
             }
 
             override fun onError(errorCode: Int, message: String) {
                 XLog.w(TAG, "STT error: $message")
                 runOnUiThread {
                     isRecording = false
-                    updateVoiceButton(false)
-                    tvLastCmd.text = "语音错误"
+                    // 持续识别模式下，错误后也自动重试（延迟稍长）
+                    if (isContinuousMode) {
+                        tvLastCmd.text = "$message，重试中..."
+                        handler.postDelayed({
+                            if (isContinuousMode && !isRecording) {
+                                startListening()
+                            }
+                        }, 1000)
+                    } else {
+                        updateVoiceButton(false)
+                        tvLastCmd.text = message
+                    }
                 }
             }
         }
     }
 
-    private fun startRecording() {
+    private fun startListening() {
         if (KVUtils.isSttUseLocal()) {
-            startLocalRecording()
+            startLocalListening()
         } else {
-            startHttpRecording()
+            startHttpListening()
         }
     }
 
-    private fun startLocalRecording() {
+    private fun startLocalListening() {
         // 复用同一个 LocalSpeechRecognizer 实例，避免频繁创建销毁导致识别器忙
         if (localRecognizer == null) {
             val recognizer = LocalSpeechRecognizer(this)
@@ -317,7 +378,6 @@ class CarControlActivity : BaseActivity() {
                 override fun onTranscribing() {
                     runOnUiThread {
                         isRecording = false
-                        updateVoiceButton(false)
                         tvLastCmd.text = "识别中..."
                     }
                 }
@@ -325,8 +385,15 @@ class CarControlActivity : BaseActivity() {
                 override fun onResult(text: String) {
                     runOnUiThread {
                         isRecording = false
-                        updateVoiceButton(false)
                         processVoiceCommand(text)
+                        // 持续识别模式下，识别完后自动重新开始
+                        if (isContinuousMode) {
+                            handler.postDelayed({
+                                if (isContinuousMode && !isRecording) {
+                                    localRecognizer?.startListening()
+                                }
+                            }, 500)
+                        }
                     }
                 }
 
@@ -334,8 +401,18 @@ class CarControlActivity : BaseActivity() {
                     XLog.w(TAG, "Local STT error: $message")
                     runOnUiThread {
                         isRecording = false
-                        updateVoiceButton(false)
-                        tvLastCmd.text = message
+                        // 持续识别模式下，错误后也自动重试
+                        if (isContinuousMode) {
+                            tvLastCmd.text = "$message，重试中..."
+                            handler.postDelayed({
+                                if (isContinuousMode && !isRecording) {
+                                    localRecognizer?.startListening()
+                                }
+                            }, 1000)
+                        } else {
+                            updateVoiceButton(false)
+                            tvLastCmd.text = message
+                        }
                     }
                 }
             }
@@ -344,7 +421,7 @@ class CarControlActivity : BaseActivity() {
         localRecognizer?.startListening()
     }
 
-    private fun startHttpRecording() {
+    private fun startHttpListening() {
         voiceController?.destroy()
         val controller = VoiceInputController(this)
         controller.listener = object : VoiceInputController.Listener {
@@ -359,21 +436,40 @@ class CarControlActivity : BaseActivity() {
             override fun onTranscribing() {
                 runOnUiThread {
                     isRecording = false
-                    updateVoiceButton(false)
                     tvLastCmd.text = "识别中..."
                 }
             }
 
             override fun onFinalResult(text: String) {
-                runOnUiThread { processVoiceCommand(text) }
+                runOnUiThread {
+                    isRecording = false
+                    processVoiceCommand(text)
+                    // 持续识别模式下，识别完后自动重新开始
+                    if (isContinuousMode) {
+                        handler.postDelayed({
+                            if (isContinuousMode && !isRecording) {
+                                startHttpListening()
+                            }
+                        }, 500)
+                    }
+                }
             }
 
             override fun onError(errorCode: Int, message: String) {
                 XLog.w(TAG, "STT error: $message")
                 runOnUiThread {
                     isRecording = false
-                    updateVoiceButton(false)
-                    tvLastCmd.text = "语音错误"
+                    if (isContinuousMode) {
+                        tvLastCmd.text = "$message，重试中..."
+                        handler.postDelayed({
+                            if (isContinuousMode && !isRecording) {
+                                startHttpListening()
+                            }
+                        }, 1000)
+                    } else {
+                        updateVoiceButton(false)
+                        tvLastCmd.text = "语音错误"
+                    }
                 }
             }
         }
@@ -381,22 +477,14 @@ class CarControlActivity : BaseActivity() {
         controller.startListening()
     }
 
-    private fun stopRecording() {
-        if (KVUtils.isSttUseLocal()) {
-            // 本地识别：调用 stopListening 让系统完成录音并返回识别结果
-            localRecognizer?.stopListening()
-        } else {
-            voiceController?.stopListening()
-        }
-        isRecording = false
-        updateVoiceButton(false)
-        tvLastCmd.text = "识别中..."
-    }
-
     private fun updateVoiceButton(recording: Boolean) {
         val btnVoice = findViewById<View>(R.id.btnVoice)
-        if (recording) {
-            btnVoice?.setBackgroundColor(Color.parseColor("#ef4444"))
+        if (recording || isContinuousMode) {
+            // 持续模式下录音中显示红色，录音间隙显示橙色
+            btnVoice?.setBackgroundColor(
+                if (recording) Color.parseColor("#ef4444")
+                else Color.parseColor("#f97316")
+            )
         } else {
             btnVoice?.setBackgroundColor(Color.parseColor("#334155"))
         }
@@ -437,8 +525,7 @@ class CarControlActivity : BaseActivity() {
             '转' to "zhuan", '走' to "zou", '边' to "bian", '向' to "xiang",
             '开' to "kai", '关' to "guan", '快' to "kuai", '慢' to "man",
             '上' to "shang", '下' to "xia", '起' to "qi", '倒' to "dao",
-            '前' to "qian", '请' to "qing", '往' to "wang", '冲' to "chong",
-            '前' to "qian", '行' to "xing",
+            '请' to "qing", '往' to "wang", '冲' to "chong", '行' to "xing",
         )
         return text.map { map[it] ?: it.toString() }.joinToString("").lowercase()
     }
@@ -503,7 +590,8 @@ class CarControlActivity : BaseActivity() {
      */
     private fun processVoiceCommand(text: String) {
         XLog.i(TAG, "Voice result: $text")
-        val trimmed = text.trim()
+        // 标点过滤
+        val trimmed = text.trim().replace(Regex("[\\p{P}\\p{S}]"), "")
         tvLastCmd.text = "\"$trimmed\""
 
         val keywords = listOf(
@@ -537,7 +625,6 @@ class CarControlActivity : BaseActivity() {
     // ==================== 指令执行 ====================
 
     private fun speakTts(text: String) {
-        ttsManager?.stop()  // 先清除去重缓存，确保重复指令也能播报
         ttsManager?.speak(text)
     }
 
@@ -623,7 +710,7 @@ class CarControlActivity : BaseActivity() {
         joystickVertical.setPercentAnimated(0f, 200L)
         joystickHorizontal.setPercentAnimated(0f, 200L)
         sendCommand("stop")
-        tvLastCmd.text = "就绪"
+        tvLastCmd.text = "持续识别中..."
         tvSpeed.text = "0%"
     }
 
