@@ -171,7 +171,7 @@ class CarControlActivity : BaseActivity() {
                     horizontalPercent = 0f
                     handler.removeCallbacks(sendRunnable)
                     sendCommand("stop")
-                    tvLastCmd.text = "STOP"
+                    tvLastCmd.text = "已停止"
                     tvSpeed.text = "0%"
                     true
                 }
@@ -200,20 +200,27 @@ class CarControlActivity : BaseActivity() {
             val speed = (absV * 90 + 10).toInt()  // 映射到 10~100
             val direction = if (verticalPercent < 0) "forw" else "back"
             sendCommand("$direction", speed)
-            tvLastCmd.text = "$direction $speed%"
+            val dirLabel = if (verticalPercent < 0) "前进" else "后退"
+            tvLastCmd.text = "$dirLabel $speed%"
         } else {
             val speed = (absH * 90 + 10).toInt()
             val direction = if (horizontalPercent < 0) "left" else "right"
             sendCommand("$direction", speed)
-            tvLastCmd.text = "$direction $speed%"
+            val dirLabel = if (horizontalPercent < 0) "左转" else "右转"
+            tvLastCmd.text = "$dirLabel $speed%"
         }
     }
 
     private fun updateSpeedDisplay() {
         val absV = Math.abs(verticalPercent)
         val absH = Math.abs(horizontalPercent)
-        val displayPercent = ((Math.max(absV, absH)) * 90 + 10).toInt()
-        tvSpeed.text = "$displayPercent%"
+        val maxVal = Math.max(absV, absH)
+        if (maxVal <= 0.05f) {
+            tvSpeed.text = "0%"
+        } else {
+            val displayPercent = ((maxVal) * 90 + 10).toInt()
+            tvSpeed.text = "$displayPercent%"
+        }
     }
 
     /**
@@ -261,11 +268,11 @@ class CarControlActivity : BaseActivity() {
         isConnected = connected
         if (connected) {
             ivWifiStatus.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#4ade80"))
-            tvWifiStatus.text = "Connected"
+            tvWifiStatus.text = "已连接"
             tvWifiStatus.setTextColor(Color.parseColor("#4ade80"))
         } else {
             ivWifiStatus.imageTintList = android.content.res.ColorStateList.valueOf(Color.parseColor("#666666"))
-            tvWifiStatus.text = "Disconnected"
+            tvWifiStatus.text = "未连接"
             tvWifiStatus.setTextColor(Color.parseColor("#888888"))
         }
     }

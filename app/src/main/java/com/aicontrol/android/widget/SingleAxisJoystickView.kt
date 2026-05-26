@@ -143,11 +143,11 @@ class SingleAxisJoystickView @JvmOverloads constructor(
 
         // 6. 绘制方向标签
         if (axis == Axis.VERTICAL) {
-            canvas.drawText("F", centerX, centerY - trackRadius * 0.65f, labelPaint)
-            canvas.drawText("B", centerX, centerY + trackRadius * 0.75f, labelPaint)
+            canvas.drawText("前", centerX, centerY - trackRadius * 0.65f, labelPaint)
+            canvas.drawText("后", centerX, centerY + trackRadius * 0.75f, labelPaint)
         } else {
-            canvas.drawText("L", centerX - trackRadius * 0.7f, centerY + thumbRadius * 0.25f, labelPaint)
-            canvas.drawText("R", centerX + trackRadius * 0.7f, centerY + thumbRadius * 0.25f, labelPaint)
+            canvas.drawText("左", centerX - trackRadius * 0.7f, centerY + thumbRadius * 0.25f, labelPaint)
+            canvas.drawText("右", centerX + trackRadius * 0.7f, centerY + thumbRadius * 0.25f, labelPaint)
         }
     }
 
