@@ -1,7 +1,7 @@
 {
-  "versionCode": 67,
-  "versionName": "v0.0.67",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.67/AiControl-latest.apk",
-  "releaseNotes": "新增语音控制小车功能：设置语音关键词、持续录音识别、摇杆动画联动、TTS语音播报",
+  "versionCode": 68,
+  "versionName": "v0.0.68",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.68/AiControl-latest.apk",
+  "releaseNotes": "修复语音控制权限请求+复用VoiceInputController",
   "releaseDate": "2026-05-26"
 }
