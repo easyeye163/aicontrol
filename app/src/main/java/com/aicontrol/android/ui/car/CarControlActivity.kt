@@ -1,7 +1,9 @@
 package com.aicontrol.android.ui.car
 
+import android.Manifest
 import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
@@ -13,13 +15,15 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.aicontrol.android.R
 import com.aicontrol.android.base.BaseActivity
 import com.aicontrol.android.floating.voice.TtsManager
 import com.aicontrol.android.utils.KVUtils
 import com.aicontrol.android.utils.XLog
-import com.aicontrol.android.voice.HttpSttVoiceRecognizer
+import com.aicontrol.android.voice.VoiceInputController
 import com.aicontrol.android.widget.SingleAxisJoystickView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,7 +35,7 @@ import java.net.URL
 /**
  * 小车控制界面 - 横屏模式
  * 左摇杆控制前后，右摇杆控制左右转向，中间3D停止按钮
- * 支持语音控制：持续录音识别关键词自动控制+TTS播报
+ * 支持语音控制：点击语音按钮持续录音识别关键词自动控制+TTS播报
  */
 class CarControlActivity : BaseActivity() {
 
@@ -41,7 +45,7 @@ class CarControlActivity : BaseActivity() {
         private const val CAR_PORT = 80
         private const val PING_INTERVAL_MS = 3000L
         private const val SEND_INTERVAL_MS = 100L
-        private const val VOICE_RECORD_MS = 3000L  // 每次录音3秒后识别
+        private const val VOICE_RECORD_MS = 3000L
     }
 
     private lateinit var ivWifiStatus: ImageView
@@ -63,12 +67,24 @@ class CarControlActivity : BaseActivity() {
     // 语音控制
     private var isVoiceMode = false
     private var ttsManager: TtsManager? = null
-    private var sttRecognizer: HttpSttVoiceRecognizer? = null
+    private var voiceController: VoiceInputController? = null
+
+    // 录音权限请求
+    private val recordPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            startVoiceModeInternal()
+        } else {
+            Toast.makeText(this, "需要录音权限才能使用语音控制", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // 定时停止录音并发起识别
     private val voiceRecordRunnable = object : Runnable {
         override fun run() {
             if (!isVoiceMode) return
-            // 停止当前录音 → 触发识别 → 识别完再重新开始
-            sttRecognizer?.stopRecording()
+            voiceController?.stopListening()
         }
     }
 
@@ -88,16 +104,13 @@ class CarControlActivity : BaseActivity() {
         }
     }
 
-    // 横屏模式不需要自动添加状态栏 padding
     override fun isApplyStatusBarPadding(): Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 强制横屏
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
 
-        // 全屏沉浸式
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = (
             View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -108,7 +121,6 @@ class CarControlActivity : BaseActivity() {
                     or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             )
 
-        // 保持屏幕常亮
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         setContentView(R.layout.activity_car_control)
@@ -126,14 +138,13 @@ class CarControlActivity : BaseActivity() {
         handler.removeCallbacks(pingRunnable)
         handler.removeCallbacks(sendRunnable)
         handler.removeCallbacks(voiceRecordRunnable)
-        stopVoiceMode()
+        if (isVoiceMode) stopVoiceMode()
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // 退出时发送停止
         sendCommand("stop")
-        sttRecognizer?.destroy()
+        voiceController?.destroy()
         ttsManager?.shutdown()
     }
 
@@ -149,8 +160,7 @@ class CarControlActivity : BaseActivity() {
         }
 
         // 语音按钮
-        val btnVoice = findViewById<View>(R.id.btnVoice)
-        btnVoice?.setOnClickListener {
+        findViewById<View>(R.id.btnVoice)?.setOnClickListener {
             toggleVoiceMode()
         }
 
@@ -158,21 +168,25 @@ class CarControlActivity : BaseActivity() {
         joystickVertical = findViewById(R.id.joystickVertical)
         joystickVertical.axis = SingleAxisJoystickView.Axis.VERTICAL
         joystickVertical.onMove = { percent ->
-            verticalPercent = percent
-            updateSpeedDisplay()
-            handler.removeCallbacks(sendRunnable)
-            if (Math.abs(verticalPercent) > 0.05f || Math.abs(horizontalPercent) > 0.05f) {
-                handler.post(sendRunnable)
-            } else if (Math.abs(horizontalPercent) <= 0.05f) {
-                sendCommand("stop")
+            if (!isVoiceMode) {
+                verticalPercent = percent
+                updateSpeedDisplay()
+                handler.removeCallbacks(sendRunnable)
+                if (Math.abs(verticalPercent) > 0.05f || Math.abs(horizontalPercent) > 0.05f) {
+                    handler.post(sendRunnable)
+                } else if (Math.abs(horizontalPercent) <= 0.05f) {
+                    sendCommand("stop")
+                }
             }
         }
         joystickVertical.onRelease = {
-            verticalPercent = 0f
-            updateSpeedDisplay()
-            if (Math.abs(horizontalPercent) <= 0.05f) {
-                handler.removeCallbacks(sendRunnable)
-                sendCommand("stop")
+            if (!isVoiceMode) {
+                verticalPercent = 0f
+                updateSpeedDisplay()
+                if (Math.abs(horizontalPercent) <= 0.05f) {
+                    handler.removeCallbacks(sendRunnable)
+                    sendCommand("stop")
+                }
             }
         }
 
@@ -180,21 +194,25 @@ class CarControlActivity : BaseActivity() {
         joystickHorizontal = findViewById(R.id.joystickHorizontal)
         joystickHorizontal.axis = SingleAxisJoystickView.Axis.HORIZONTAL
         joystickHorizontal.onMove = { percent ->
-            horizontalPercent = percent
-            updateSpeedDisplay()
-            handler.removeCallbacks(sendRunnable)
-            if (Math.abs(verticalPercent) > 0.05f || Math.abs(horizontalPercent) > 0.05f) {
-                handler.post(sendRunnable)
-            } else if (Math.abs(verticalPercent) <= 0.05f) {
-                sendCommand("stop")
+            if (!isVoiceMode) {
+                horizontalPercent = percent
+                updateSpeedDisplay()
+                handler.removeCallbacks(sendRunnable)
+                if (Math.abs(verticalPercent) > 0.05f || Math.abs(horizontalPercent) > 0.05f) {
+                    handler.post(sendRunnable)
+                } else if (Math.abs(verticalPercent) <= 0.05f) {
+                    sendCommand("stop")
+                }
             }
         }
         joystickHorizontal.onRelease = {
-            horizontalPercent = 0f
-            updateSpeedDisplay()
-            if (Math.abs(verticalPercent) <= 0.05f) {
-                handler.removeCallbacks(sendRunnable)
-                sendCommand("stop")
+            if (!isVoiceMode) {
+                horizontalPercent = 0f
+                updateSpeedDisplay()
+                if (Math.abs(verticalPercent) <= 0.05f) {
+                    handler.removeCallbacks(sendRunnable)
+                    sendCommand("stop")
+                }
             }
         }
 
@@ -217,9 +235,9 @@ class CarControlActivity : BaseActivity() {
 
     private fun initVoice() {
         ttsManager = TtsManager(this)
-        sttRecognizer = HttpSttVoiceRecognizer(this)
-        sttRecognizer?.listener = object : HttpSttVoiceRecognizer.Listener {
-            override fun onRecordingStarted() {
+        voiceController = VoiceInputController(this)
+        voiceController?.listener = object : VoiceInputController.Listener {
+            override fun onListeningStarted() {
                 runOnUiThread { tvLastCmd.text = "聆听中..." }
             }
 
@@ -227,17 +245,21 @@ class CarControlActivity : BaseActivity() {
                 runOnUiThread { tvLastCmd.text = "识别中..." }
             }
 
-            override fun onResult(text: String) {
+            override fun onFinalResult(text: String) {
                 runOnUiThread { processVoiceCommand(text) }
                 // 识别完成后继续下一次录音
-                handler.postDelayed(voiceRecordRunnable, 500)
+                if (isVoiceMode) {
+                    handler.postDelayed(voiceRecordRunnable, 500)
+                }
             }
 
-            override fun onError(message: String) {
+            override fun onError(errorCode: Int, message: String) {
                 XLog.w(TAG, "STT error: $message")
                 runOnUiThread { tvLastCmd.text = "语音错误" }
-                // 出错后也继续下一次录音
-                handler.postDelayed(voiceRecordRunnable, 1000)
+                // 出错后继续下一次录音
+                if (isVoiceMode) {
+                    handler.postDelayed(voiceRecordRunnable, 1000)
+                }
             }
         }
     }
@@ -246,28 +268,34 @@ class CarControlActivity : BaseActivity() {
         if (isVoiceMode) {
             stopVoiceMode()
         } else {
-            startVoiceMode()
+            // 先检查权限
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+                recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                return
+            }
+            if (!KVUtils.hasSttConfig()) {
+                Toast.makeText(this, "请先配置STT语音识别（设置 > 模型 > STT配置）", Toast.LENGTH_LONG).show()
+                return
+            }
+            startVoiceModeInternal()
         }
     }
 
-    private fun startVoiceMode() {
-        if (!KVUtils.hasSttConfig()) {
-            Toast.makeText(this, "请先配置STT语音识别（设置 > 模型 > STT配置）", Toast.LENGTH_LONG).show()
-            return
-        }
+    private fun startVoiceModeInternal() {
         isVoiceMode = true
         val btnVoice = findViewById<View>(R.id.btnVoice)
         btnVoice?.setBackgroundColor(Color.parseColor("#ef4444"))
         tvLastCmd.text = "语音已开启"
         // 开始第一次录音
-        sttRecognizer?.startRecording()
+        voiceController?.startListening()
         handler.postDelayed(voiceRecordRunnable, VOICE_RECORD_MS)
     }
 
     private fun stopVoiceMode() {
         isVoiceMode = false
         handler.removeCallbacks(voiceRecordRunnable)
-        sttRecognizer?.stopRecording()
+        voiceController?.stopListening()
         val btnVoice = findViewById<View>(R.id.btnVoice)
         btnVoice?.setBackgroundColor(Color.parseColor("#334155"))
         tvLastCmd.text = "就绪"
@@ -307,11 +335,9 @@ class CarControlActivity : BaseActivity() {
         }
     }
 
-    /**
-     * 执行前进：摇杆到顶端100%，发送指令，TTS播报
-     */
     private fun executeForward() {
         handler.removeCallbacks(sendRunnable)
+        handler.removeCallbacks(voiceRecordRunnable) // 执行动作时暂停录音循环
         verticalPercent = 1f
         horizontalPercent = 0f
         joystickVertical.setPercentAnimated(1f, 200L)
@@ -320,17 +346,19 @@ class CarControlActivity : BaseActivity() {
         tvLastCmd.text = "前进 100%"
         tvSpeed.text = "100%"
         ttsManager?.speak("已前进")
-        // 2秒后自动回中
-        handler.removeCallbacks(sendRunnable)
+        // 2秒后自动回中并恢复语音
         handler.postDelayed({
             if (isVoiceMode) {
                 executeStop()
+                // 恢复语音循环
+                handler.postDelayed(voiceRecordRunnable, 300)
             }
         }, 2000)
     }
 
     private fun executeBackward() {
         handler.removeCallbacks(sendRunnable)
+        handler.removeCallbacks(voiceRecordRunnable)
         verticalPercent = -1f
         horizontalPercent = 0f
         joystickVertical.setPercentAnimated(-1f, 200L)
@@ -342,12 +370,14 @@ class CarControlActivity : BaseActivity() {
         handler.postDelayed({
             if (isVoiceMode) {
                 executeStop()
+                handler.postDelayed(voiceRecordRunnable, 300)
             }
         }, 2000)
     }
 
     private fun executeLeft() {
         handler.removeCallbacks(sendRunnable)
+        handler.removeCallbacks(voiceRecordRunnable)
         verticalPercent = 0f
         horizontalPercent = -1f
         joystickVertical.setPercentAnimated(0f, 200L)
@@ -359,12 +389,14 @@ class CarControlActivity : BaseActivity() {
         handler.postDelayed({
             if (isVoiceMode) {
                 executeStop()
+                handler.postDelayed(voiceRecordRunnable, 300)
             }
         }, 2000)
     }
 
     private fun executeRight() {
         handler.removeCallbacks(sendRunnable)
+        handler.removeCallbacks(voiceRecordRunnable)
         verticalPercent = 0f
         horizontalPercent = 1f
         joystickVertical.setPercentAnimated(0f, 200L)
@@ -376,6 +408,7 @@ class CarControlActivity : BaseActivity() {
         handler.postDelayed({
             if (isVoiceMode) {
                 executeStop()
+                handler.postDelayed(voiceRecordRunnable, 300)
             }
         }, 2000)
     }
@@ -434,7 +467,6 @@ class CarControlActivity : BaseActivity() {
 
     private fun sendCommand(direction: String, speed: Int = 50) {
         val urlStr = "http://$CAR_HOST:$CAR_PORT/control/${direction}_$speed"
-
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) {
@@ -446,9 +478,7 @@ class CarControlActivity : BaseActivity() {
                     conn.responseCode
                     conn.disconnect()
                 }
-            } catch (_: Exception) {
-                // 静默失败
-            }
+            } catch (_: Exception) {}
         }
     }
 
@@ -458,9 +488,7 @@ class CarControlActivity : BaseActivity() {
                 try {
                     val address = InetAddress.getByName(CAR_HOST)
                     address.isReachable(1500)
-                } catch (_: Exception) {
-                    false
-                }
+                } catch (_: Exception) { false }
             }
             updateConnectionStatus(reachable)
         }
