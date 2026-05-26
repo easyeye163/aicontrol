@@ -111,7 +111,6 @@ class LocalSpeechRecognizer(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-CN")
-            putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_DEFAULT_LANGUAGE, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
             // 提示文字（部分 ROM 会显示弹窗）
             putExtra(RecognizerIntent.EXTRA_PROMPT, "")
