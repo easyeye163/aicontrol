@@ -90,12 +90,13 @@ class CarControlActivity : BaseActivity() {
     private var localRecognizer: LocalSpeechRecognizer? = null
 
     // 录音权限请求
+    private var pendingVoiceStart = false
     private val recordPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
-            // 权限通过后自动开始录音
-            toggleVoice()
+        if (granted && pendingVoiceStart) {
+            pendingVoiceStart = false
+            beginVoiceRecording()
         } else {
             Toast.makeText(this, "需要录音权限才能使用语音控制", Toast.LENGTH_LONG).show()
         }
@@ -195,20 +196,33 @@ class CarControlActivity : BaseActivity() {
             startActivity(Intent(this, CarControlSettingsActivity::class.java))
         }
 
-        // 语音按钮 — 点击开始识别，再点击结束识别
-        findViewById<View>(R.id.btnVoice)?.setOnClickListener {
-            // 先检查权限
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                != PackageManager.PERMISSION_GRANTED) {
-                recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                return@setOnClickListener
+        // 语音按钮 — 长按说话，松开识别
+        findViewById<View>(R.id.btnVoice)?.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    // 先检查权限
+                    if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                        != PackageManager.PERMISSION_GRANTED) {
+                        pendingVoiceStart = true
+                        recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                        return@setOnTouchListener true
+                    }
+                    if (!KVUtils.isSttUseLocal() && !KVUtils.hasSttConfig()) {
+                        Toast.makeText(this, "请先配置STT", Toast.LENGTH_SHORT).show()
+                        return@setOnTouchListener true
+                    }
+                    beginVoiceRecording()
+                    true
+                }
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> {
+                    if (isRecording) {
+                        endVoiceRecording()
+                    }
+                    true
+                }
+                else -> false
             }
-            // 本地语音不需要 API 配置，HTTP 语音需要检查
-            if (!KVUtils.isSttUseLocal() && !KVUtils.hasSttConfig()) {
-                Toast.makeText(this, "请先配置STT语音识别（设置 > 模型 > STT配置）\n或在STT设置中开启本地语音识别", Toast.LENGTH_LONG).show()
-                return@setOnClickListener
-            }
-            toggleVoice()
         }
 
         // 左摇杆 — 前后控制 (vertical)
@@ -304,47 +318,28 @@ class CarControlActivity : BaseActivity() {
         }
     }
 
-    // ==================== 语音控制（点击开始/结束） ====================
+    // ==================== 语音控制（长按说话，松开识别） ====================
 
     /**
-     * 切换语音识别
-     * 点击一次 → 开始识别（识别完自动结束）
-     * 再点一次 → 手动停止识别
+     * 按下 → 开始录音
      */
-    private fun toggleVoice() {
-        if (isRecording) {
-            stopVoice()
-        } else {
-            startVoice()
-        }
-    }
-
-    private fun startVoice() {
-        updateVoiceButton(true)
-        tvLastCmd.text = "语音已开启"
+    private fun beginVoiceRecording() {
         scrollDebugLog.visibility = View.VISIBLE
-        appendDebugLog("[系统] 开始识别")
-        XLog.i(TAG, "Voice mode ON")
-        // 延迟 300ms 开始，让用户看到按钮变红
-        handler.postDelayed({
-            if (!isRecording) {
-                startListening()
-            }
-        }, 300)
+        appendDebugLog("[系统] 开始录音")
+        tvLastCmd.text = "聆听中..."
+        startListening()
     }
 
-    private fun stopVoice() {
-        isRecording = false
+    /**
+     * 松开 → 停止录音并识别
+     */
+    private fun endVoiceRecording() {
+        appendDebugLog("[系统] 松开，开始识别")
         if (KVUtils.isSttUseLocal()) {
-            localRecognizer?.cancel()
+            localRecognizer?.stopListening()
         } else {
-            voiceController?.destroy()
-            voiceController = null
+            voiceController?.stopListening()
         }
-        updateVoiceButton(false)
-        tvLastCmd.text = "语音已关闭"
-        appendDebugLog("[系统] 手动停止识别")
-        XLog.i(TAG, "Voice mode OFF")
     }
 
     // ==================== 调试日志 ====================

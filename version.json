@@ -1,7 +1,7 @@
 {
-  "versionCode": 82,
-  "versionName": "v0.0.82",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.82/AiControl-latest.apk",
-  "releaseNotes": "语音控制改为点击开始/结束模式，取消自动循环识别",
+  "versionCode": 83,
+  "versionName": "v0.0.83",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.83/AiControl-latest.apk",
+  "releaseNotes": "语音控制改为长按说话、松开自动识别",
   "releaseDate": "2026-05-27"
 }
