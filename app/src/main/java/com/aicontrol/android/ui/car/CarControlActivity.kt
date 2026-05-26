@@ -48,7 +48,7 @@ class CarControlActivity : BaseActivity() {
     private var isConnected = false
 
     // 当前摇杆状态
-    private var verticalPercent = 0f   // -1(前) ~ 0(中) ~ 1(后)
+    private var verticalPercent = 0f   // -1(后) ~ 0(中) ~ 1(前)
     private var horizontalPercent = 0f  // -1(左) ~ 0(中) ~ 1(右)
 
     // 连续发送定时器
@@ -198,9 +198,9 @@ class CarControlActivity : BaseActivity() {
         // 优先级：前后 > 左右（前后移动时忽略转向）
         if (absV >= absH) {
             val speed = (absV * 90 + 10).toInt()  // 映射到 10~100
-            val direction = if (verticalPercent < 0) "forw" else "back"
+            val direction = if (verticalPercent > 0) "forw" else "back"
             sendCommand("$direction", speed)
-            val dirLabel = if (verticalPercent < 0) "前进" else "后退"
+            val dirLabel = if (verticalPercent > 0) "前进" else "后退"
             tvLastCmd.text = "$dirLabel $speed%"
         } else {
             val speed = (absH * 90 + 10).toInt()
