@@ -227,15 +227,18 @@ class CarControlActivity : BaseActivity() {
                     // 推到顶：发送100%方向指令
                     verticalCommandActive = true
                     val direction = if (percent > 0) "forw" else "back"
-                    sendCommand(direction, 100)
                     val dirLabel = if (percent > 0) "前进" else "后退"
+                    sendCommand(direction, 100)
                     tvLastCmd.text = "$dirLabel 100%"
+                    speakTts("已${dirLabel}")
                 }
                 absP <= 0.05f && verticalCommandActive -> {
                     // 回中：发送停止指令
                     verticalCommandActive = false
                     if (!horizontalCommandActive) {
                         sendCommand("stop")
+                        tvLastCmd.text = "已停止"
+                        tvSpeed.text = "0%"
                     }
                 }
             }
@@ -263,15 +266,18 @@ class CarControlActivity : BaseActivity() {
                     // 推到顶：发送100%方向指令
                     horizontalCommandActive = true
                     val direction = if (percent < 0) "left" else "right"
-                    sendCommand(direction, 100)
                     val dirLabel = if (percent < 0) "左转" else "右转"
+                    sendCommand(direction, 100)
                     tvLastCmd.text = "$dirLabel 100%"
+                    speakTts("已${dirLabel}")
                 }
                 absP <= 0.05f && horizontalCommandActive -> {
                     // 回中：发送停止指令
                     horizontalCommandActive = false
                     if (!verticalCommandActive) {
                         sendCommand("stop")
+                        tvLastCmd.text = "已停止"
+                        tvSpeed.text = "0%"
                     }
                 }
             }

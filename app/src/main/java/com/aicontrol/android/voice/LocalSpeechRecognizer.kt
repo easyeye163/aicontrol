@@ -31,6 +31,8 @@ class LocalSpeechRecognizer(private val context: Context) {
         private const val TAG = "LocalSTT"
         private const val RETRY_DELAY_MS = 300L
         private const val MAX_RETRY = 1
+        /** cancel() 后等待多久再 startListening()，某些设备需要延时才能正常重启 */
+        private const val CANCEL_TO_START_DELAY_MS = 200L
     }
 
     interface Listener {
@@ -150,10 +152,10 @@ class LocalSpeechRecognizer(private val context: Context) {
 
     /**
      * 开始语音识别（对外接口）
-     * 如果当前正在识别，先取消再重新开始
      *
-     * 重要：每次 startListening 都先 cancel 再 start，
-     * 因为某些设备/ROM 在上一轮 onResults/onError 后不 cancel 就直接 start 会导致识别器无响应
+     * 关键：cancel() 后必须延时 200ms 再 startListening()，
+     * 否则某些设备/ROM 上识别器会静默无响应（onBeginningOfSpeech 正常回调，
+     * 但之后 onEndOfSpeech/onResults/onError 全部不回调）
      */
     fun startListening() {
         // 先检查设备是否支持语音识别
@@ -165,7 +167,9 @@ class LocalSpeechRecognizer(private val context: Context) {
         // 确保 SpeechRecognizer 实例已创建（复用，不每次新建）
         ensureRecognizer()
 
-        // 无论是否 isListening，每次都先 cancel，确保识别器处于干净状态
+        val needDelay = speechRecognizer != null // 非首次启动需要 cancel+延时
+
+        // cancel 旧会话
         try {
             speechRecognizer?.cancel()
             Log.i(TAG, "Pre-cancel before startListening (was isListening=$isListening)")
@@ -173,9 +177,20 @@ class LocalSpeechRecognizer(private val context: Context) {
             Log.w(TAG, "pre-cancel error", e)
         }
         isListening = false
-
         retryCount = 0
-        internalStartListening()
+
+        if (needDelay) {
+            // 非首次启动：cancel 后延时再 start，避免识别器静默无响应
+            Log.i(TAG, "Delaying ${CANCEL_TO_START_DELAY_MS}ms after cancel before start")
+            handler.postDelayed({
+                if (!isListening) {
+                    internalStartListening()
+                }
+            }, CANCEL_TO_START_DELAY_MS)
+        } else {
+            // 首次启动：无需延时
+            internalStartListening()
+        }
     }
 
     /**
