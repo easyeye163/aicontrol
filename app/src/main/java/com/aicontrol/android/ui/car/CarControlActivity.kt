@@ -342,14 +342,55 @@ class CarControlActivity : BaseActivity() {
         }
     }
 
-    // ==================== 模糊匹配 ====================
+    // ==================== 拼音模糊匹配 ====================
 
     /**
-     * 计算两个字符串的 Levenshtein 编辑距离
+     * 汉字转拼音（小写无调）
+     * 优先使用 android.icu.text.Transliterator（API 29+），
+     * 回退使用内置常用字拼音表
      */
-    private fun levenshtein(a: String, b: String): Int {
+    private fun toPinyin(text: String): String {
+        if (text.isEmpty()) return ""
+        // 先检查是否全是非中文（英文/数字/符号），直接返回
+        if (text.all { it.code < 0x4E00 || it.code > 0x9FFF }) return text.lowercase()
+        // API 29+ 使用 ICU Transliterator
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            return try {
+                android.icu.text.Transliterator.getInstance("Han-Latin").transliterate(text)
+                    .replace(Regex("[^a-zA-Z]"), "")
+                    .lowercase()
+            } catch (e: Exception) {
+                XLog.w(TAG, "ICU Transliterator failed: ${e.message}")
+                fallbackPinyin(text)
+            }
+        }
+        return fallbackPinyin(text)
+    }
+
+    /**
+     * 回退拼音表（小车控制常用字）
+     */
+    private fun fallbackPinyin(text: String): String {
+        val map = mapOf(
+            '前' to "qian", '后' to "hou", '左' to "zuo", '右' to "you",
+            '停' to "ting", '止' to "zhi", '进' to "jin", '退' to "tui",
+            '转' to "zhuan", '走' to "zou", '边' to "bian", '向' to "xiang",
+            '开' to "kai", '关' to "guan", '快' to "kuai", '慢' to "man",
+            '上' to "shang", '下' to "xia", '起' to "qi", '倒' to "dao",
+            '前' to "qian", '请' to "qing", '往' to "wang", '冲' to "chong",
+            '前' to "qian", '行' to "xing",
+        )
+        return text.map { map[it] ?: it.toString() }.joinToString("").lowercase()
+    }
+
+    /**
+     * 计算两个拼音字符串的 Levenshtein 编辑距离
+     */
+    private fun pinyinLevenshtein(a: String, b: String): Int {
         val m = a.length
         val n = b.length
+        if (m == 0) return n
+        if (n == 0) return m
         val dp = Array(m + 1) { IntArray(n + 1) }
         for (i in 0..m) dp[i][0] = i
         for (j in 0..n) dp[0][j] = j
@@ -366,52 +407,70 @@ class CarControlActivity : BaseActivity() {
     }
 
     /**
-     * 模糊匹配：先精确包含匹配，再滑动窗口编辑距离匹配
-     * @param text 语音识别结果
-     * @param keyword 配置的关键词
-     * @param threshold 相似度阈值（0~1），默认 0.5
+     * 拼音相似度匹配：先精确中文包含匹配，再转拼音做包含/编辑距离比较
+     * @param text 语音识别结果原文
+     * @param keyword 配置的关键词原文
+     * @return 相似度分数 0~1
      */
-    private fun fuzzyMatch(text: String, keyword: String, threshold: Float = 0.5f): Boolean {
-        if (text.isEmpty() || keyword.isEmpty()) return false
-        // 1. 精确包含匹配
-        if (text.contains(keyword)) return true
-        // 2. 滑动窗口：在 text 中找与 keyword 长度相近的子串进行编辑距离比较
-        val kwLen = keyword.length
-        val textLen = text.length
-        for (winLen in maxOf(1, kwLen - 1)..minOf(textLen, kwLen + 1)) {
-            for (i in 0..textLen - winLen) {
-                val sub = text.substring(i, i + winLen)
-                val dist = levenshtein(sub, keyword)
-                val maxLen = maxOf(sub.length, keyword.length)
-                if (1.0f - dist.toFloat() / maxLen >= threshold) return true
+    private fun pinyinScore(text: String, keyword: String): Float {
+        if (text.isEmpty() || keyword.isEmpty()) return 0f
+        // 1. 精确中文包含 → 满分
+        if (text.contains(keyword)) return 1.0f
+        // 2. 转拼音比较
+        val textPy = toPinyin(text)
+        val kwPy = toPinyin(keyword)
+        // 拼音包含 → 满分（如"往前走" → "qianwangzou" 包含 "qian"）
+        if (textPy.contains(kwPy)) return 1.0f
+        // 3. 拼音编辑距离：滑动窗口取最高分
+        val kwPyLen = kwPy.length
+        val textPyLen = textPy.length
+        var bestScore = 0f
+        for (winLen in maxOf(1, kwPyLen - 1)..minOf(textPyLen, kwPyLen + 2)) {
+            for (i in 0..textPyLen - winLen) {
+                val sub = textPy.substring(i, i + winLen)
+                val dist = pinyinLevenshtein(sub, kwPy)
+                val maxLen = maxOf(sub.length, kwPy.length)
+                val score = 1.0f - dist.toFloat() / maxLen
+                if (score > bestScore) bestScore = score
             }
         }
-        return false
+        return bestScore
     }
 
     /**
-     * 处理语音识别结果，模糊匹配关键词执行控制
+     * 处理语音识别结果，用拼音模糊匹配取最高相似度关键词执行
+     * 例如"左边"(zuobian) vs "右边"(youbian) 拼音差异大，不会误判
      */
     private fun processVoiceCommand(text: String) {
         XLog.i(TAG, "Voice result: $text")
         val trimmed = text.trim()
         tvLastCmd.text = "\"$trimmed\""
 
-        val kwForward = KVUtils.getCarKeywordForward()
-        val kwBackward = KVUtils.getCarKeywordBackward()
-        val kwLeft = KVUtils.getCarKeywordLeft()
-        val kwRight = KVUtils.getCarKeywordRight()
-        val kwStop = KVUtils.getCarKeywordStop()
+        val keywords = listOf(
+            KVUtils.getCarKeywordForward() to ::executeForward,
+            KVUtils.getCarKeywordBackward() to ::executeBackward,
+            KVUtils.getCarKeywordLeft() to ::executeLeft,
+            KVUtils.getCarKeywordRight() to ::executeRight,
+            KVUtils.getCarKeywordStop() to ::executeStop,
+        )
 
-        when {
-            fuzzyMatch(trimmed, kwForward) -> executeForward()
-            fuzzyMatch(trimmed, kwBackward) -> executeBackward()
-            fuzzyMatch(trimmed, kwLeft) -> executeLeft()
-            fuzzyMatch(trimmed, kwRight) -> executeRight()
-            fuzzyMatch(trimmed, kwStop) -> executeStop()
-            else -> {
-                XLog.i(TAG, "No keyword matched")
+        val threshold = 0.5f
+        var bestScore = threshold
+        var bestAction: (() -> Unit)? = null
+
+        for ((keyword, action) in keywords) {
+            val score = pinyinScore(trimmed, keyword)
+            XLog.i(TAG, "  keyword='$keyword' pinyin='${toPinyin(keyword)}' score=$score")
+            if (score > bestScore) {
+                bestScore = score
+                bestAction = action
             }
+        }
+
+        if (bestAction != null) {
+            bestAction.invoke()
+        } else {
+            XLog.i(TAG, "No keyword matched (threshold=$threshold)")
         }
     }
 
