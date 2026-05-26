@@ -84,8 +84,7 @@ class CarControlActivity : BaseActivity() {
 
     // 语音控制
     private var isRecording = false
-    /** 持续识别模式：开启后识别完自动重新开始监听 */
-    private var isContinuousMode = false
+
     private var ttsManager: TtsManager? = null
     private var voiceController: VoiceInputController? = null
     private var localRecognizer: LocalSpeechRecognizer? = null
@@ -96,7 +95,7 @@ class CarControlActivity : BaseActivity() {
     ) { granted ->
         if (granted) {
             // 权限通过后自动开始录音
-            toggleContinuousVoice()
+            toggleVoice()
         } else {
             Toast.makeText(this, "需要录音权限才能使用语音控制", Toast.LENGTH_LONG).show()
         }
@@ -164,13 +163,12 @@ class CarControlActivity : BaseActivity() {
         super.onPause()
         handler.removeCallbacks(pingRunnable)
         handler.removeCallbacks(sendRunnable)
-        // 如果正在持续识别，取消录音（不销毁实例，onResume 可复用）
-        if (isRecording || isContinuousMode) {
+        // 如果正在识别，取消录音
+        if (isRecording) {
             voiceController?.destroy()
             voiceController = null
             localRecognizer?.cancel()
             isRecording = false
-            isContinuousMode = false
             updateVoiceButton(false)
             tvLastCmd.text = "就绪"
         }
@@ -197,7 +195,7 @@ class CarControlActivity : BaseActivity() {
             startActivity(Intent(this, CarControlSettingsActivity::class.java))
         }
 
-        // 语音按钮 — 点击切换持续识别模式
+        // 语音按钮 — 点击开始识别，再点击结束识别
         findViewById<View>(R.id.btnVoice)?.setOnClickListener {
             // 先检查权限
             if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
@@ -210,7 +208,7 @@ class CarControlActivity : BaseActivity() {
                 Toast.makeText(this, "请先配置STT语音识别（设置 > 模型 > STT配置）\n或在STT设置中开启本地语音识别", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
-            toggleContinuousVoice()
+            toggleVoice()
         }
 
         // 左摇杆 — 前后控制 (vertical)
@@ -306,41 +304,37 @@ class CarControlActivity : BaseActivity() {
         }
     }
 
-    // ==================== 语音控制（点击持续识别） ====================
+    // ==================== 语音控制（点击开始/结束） ====================
 
     /**
-     * 切换持续识别模式
-     * 点击一次开启 → 持续识别（识别完自动继续）
-     * 再点一次关闭 → 停止识别
+     * 切换语音识别
+     * 点击一次 → 开始识别（识别完自动结束）
+     * 再点一次 → 手动停止识别
      */
-    private fun toggleContinuousVoice() {
-        if (isContinuousMode) {
-            stopContinuousVoice()
+    private fun toggleVoice() {
+        if (isRecording) {
+            stopVoice()
         } else {
-            startContinuousVoice()
+            startVoice()
         }
     }
 
-    private fun startContinuousVoice() {
-        isContinuousMode = true
+    private fun startVoice() {
         updateVoiceButton(true)
         tvLastCmd.text = "语音已开启"
-        // 开启调试面板
         scrollDebugLog.visibility = View.VISIBLE
-        appendDebugLog("[系统] 持续识别模式开启")
-        XLog.i(TAG, "Continuous voice mode ON")
+        appendDebugLog("[系统] 开始识别")
+        XLog.i(TAG, "Voice mode ON")
         // 延迟 300ms 开始，让用户看到按钮变红
         handler.postDelayed({
-            if (isContinuousMode) {
+            if (!isRecording) {
                 startListening()
             }
         }, 300)
     }
 
-    private fun stopContinuousVoice() {
-        isContinuousMode = false
+    private fun stopVoice() {
         isRecording = false
-        // 取消当前识别
         if (KVUtils.isSttUseLocal()) {
             localRecognizer?.cancel()
         } else {
@@ -349,41 +343,8 @@ class CarControlActivity : BaseActivity() {
         }
         updateVoiceButton(false)
         tvLastCmd.text = "语音已关闭"
-        appendDebugLog("[系统] 持续识别模式关闭")
-        XLog.i(TAG, "Continuous voice mode OFF")
-    }
-
-    /**
-     * 调度重新开始监听
-     * 关键：等 TTS 播完后再重启识别器，否则识别器抢占音频焦点导致 TTS 被中断
-     * 每次重启前先 cancel 旧识别器，避免某些设备上识别器状态异常
-     */
-    private fun scheduleRestartListening(delayMs: Long = 500L) {
-        if (!isContinuousMode) return
-        handler.postDelayed({
-            if (!isContinuousMode || isRecording) return@postDelayed
-            // 如果 TTS 正在播报，等它播完再启动识别器（每 200ms 检查一次）
-            if (ttsManager?.isSpeaking == true) {
-                tvLastCmd.text = "播报中，等待重启..."
-                appendDebugLog("[调度] TTS播报中，等待...")
-                handler.postDelayed(object : Runnable {
-                    override fun run() {
-                        if (!isContinuousMode || isRecording) return
-                        if (ttsManager?.isSpeaking == true) {
-                            // 还在播报，继续等
-                            handler.postDelayed(this, 200)
-                            return
-                        }
-                        appendDebugLog("[调度] TTS播报完毕，重启识别")
-                        tvLastCmd.text = "继续聆听..."
-                        startListening()
-                    }
-                }, 200)
-                return@postDelayed
-            }
-            appendDebugLog("[调度] 重启识别器")
-            startListening()
-        }, delayMs)
+        appendDebugLog("[系统] 手动停止识别")
+        XLog.i(TAG, "Voice mode OFF")
     }
 
     // ==================== 调试日志 ====================
@@ -414,7 +375,7 @@ class CarControlActivity : BaseActivity() {
         }
     }
 
-    // ==================== 语音控制（点击持续识别） ====================
+    // ==================== 语音控制（点击开始/结束） ====================
 
     private fun initVoice() {
         ttsManager = TtsManager(this)
@@ -439,9 +400,9 @@ class CarControlActivity : BaseActivity() {
                 runOnUiThread {
                     isRecording = false
                     processVoiceCommand(text)
-                    if (isContinuousMode) {
-                        scheduleRestartListening()
-                    }
+                    // 识别完成，结束
+                    updateVoiceButton(false)
+                    tvLastCmd.text = "就绪"
                 }
             }
 
@@ -449,13 +410,8 @@ class CarControlActivity : BaseActivity() {
                 XLog.w(TAG, "STT error: $message")
                 runOnUiThread {
                     isRecording = false
-                    if (isContinuousMode) {
-                        tvLastCmd.text = "$message，重试中..."
-                        scheduleRestartListening(1000)
-                    } else {
-                        updateVoiceButton(false)
-                        tvLastCmd.text = message
-                    }
+                    updateVoiceButton(false)
+                    tvLastCmd.text = message
                 }
             }
         }
@@ -496,10 +452,9 @@ class CarControlActivity : BaseActivity() {
                         isRecording = false
                         appendDebugLog("[结果] 识别成功: \"$text\"")
                         processVoiceCommand(text)
-                        if (isContinuousMode) {
-                            appendDebugLog("[调度] 等待500ms后重启识别")
-                            scheduleRestartListening()
-                        }
+                        // 识别完成，结束
+                        updateVoiceButton(false)
+                        tvLastCmd.text = "就绪"
                     }
                 }
 
@@ -516,14 +471,8 @@ class CarControlActivity : BaseActivity() {
                     runOnUiThread {
                         isRecording = false
                         appendDebugLog("[错误] $message")
-                        if (isContinuousMode) {
-                            tvLastCmd.text = "$message，重试中..."
-                            appendDebugLog("[调度] 等待1s后重启识别")
-                            scheduleRestartListening(1000)
-                        } else {
-                            updateVoiceButton(false)
-                            tvLastCmd.text = message
-                        }
+                        updateVoiceButton(false)
+                        tvLastCmd.text = message
                     }
                 }
             }
@@ -564,10 +513,9 @@ class CarControlActivity : BaseActivity() {
                     isRecording = false
                     appendDebugLog("[结果] 识别成功: \"$text\"")
                     processVoiceCommand(text)
-                    if (isContinuousMode) {
-                        appendDebugLog("[调度] 等待500ms后重启识别")
-                        scheduleRestartListening()
-                    }
+                    // 识别完成，结束
+                    updateVoiceButton(false)
+                    tvLastCmd.text = "就绪"
                 }
             }
 
@@ -576,14 +524,8 @@ class CarControlActivity : BaseActivity() {
                 runOnUiThread {
                     isRecording = false
                     appendDebugLog("[错误] $message")
-                    if (isContinuousMode) {
-                        tvLastCmd.text = "$message，重试中..."
-                        appendDebugLog("[调度] 等待1s后重启识别")
-                        scheduleRestartListening(1000)
-                    } else {
-                        updateVoiceButton(false)
-                        tvLastCmd.text = message
-                    }
+                    updateVoiceButton(false)
+                    tvLastCmd.text = message
                 }
             }
         }
@@ -593,11 +535,8 @@ class CarControlActivity : BaseActivity() {
 
     private fun updateVoiceButton(recording: Boolean) {
         val btnVoice = findViewById<View>(R.id.btnVoice)
-        if (recording || isContinuousMode) {
-            btnVoice?.setBackgroundColor(
-                if (recording) Color.parseColor("#ef4444")
-                else Color.parseColor("#f97316")
-            )
+        if (recording) {
+            btnVoice?.setBackgroundColor(Color.parseColor("#ef4444"))
         } else {
             btnVoice?.setBackgroundColor(Color.parseColor("#334155"))
         }
@@ -811,11 +750,7 @@ class CarControlActivity : BaseActivity() {
         joystickVertical.setPercentAnimated(0f, 200L)
         joystickHorizontal.setPercentAnimated(0f, 200L)
         sendCommand("stop")
-        if (isContinuousMode) {
-            tvLastCmd.text = "继续聆听..."
-        } else {
-            tvLastCmd.text = "就绪"
-        }
+        tvLastCmd.text = "就绪"
         tvSpeed.text = "0%"
     }
 
