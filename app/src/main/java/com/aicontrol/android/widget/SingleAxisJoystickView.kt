@@ -130,13 +130,10 @@ class SingleAxisJoystickView @JvmOverloads constructor(
             thumbX - thumbRadius * 0.3f,
             thumbY - thumbRadius * 0.3f,
             thumbRadius * 0.1f,
-            thumbX,
-            thumbY,
-            thumbRadius,
-            longArrayOf(
-                Color.parseColor("#60a5fa").toLong(),  // 高光
-                Color.parseColor("#3b82f6").toLong(),  // 主色
-                Color.parseColor("#1e40af").toLong()   // 阴影
+            intArrayOf(
+                Color.parseColor("#60a5fa"),  // 高光
+                Color.parseColor("#3b82f6"),  // 主色
+                Color.parseColor("#1e40af")   // 阴影
             ),
             null,
             Shader.TileMode.CLAMP

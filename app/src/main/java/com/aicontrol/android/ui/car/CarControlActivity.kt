@@ -16,7 +16,6 @@ import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
 import com.aicontrol.android.R
 import com.aicontrol.android.base.BaseActivity
-import com.aicontrol.android.widget.CommonToolbar
 import com.aicontrol.android.widget.SingleAxisJoystickView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -67,6 +66,9 @@ class CarControlActivity : BaseActivity() {
             handler.postDelayed(this, PING_INTERVAL_MS)
         }
     }
+
+    // 横屏模式不需要自动添加状态栏 padding
+    override fun isApplyStatusBarPadding(): Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
