@@ -145,12 +145,11 @@ class CarControlActivity : BaseActivity() {
         super.onPause()
         handler.removeCallbacks(pingRunnable)
         handler.removeCallbacks(sendRunnable)
-        // 如果正在录音，停止录音并放弃识别
+        // 如果正在录音，取消录音（不销毁实例，onResume 可复用）
         if (isRecording) {
             voiceController?.destroy()
             voiceController = null
-            localRecognizer?.destroy()
-            localRecognizer = null
+            localRecognizer?.cancel()
             isRecording = false
             updateVoiceButton(false)
             tvLastCmd.text = "就绪"
@@ -303,44 +302,46 @@ class CarControlActivity : BaseActivity() {
     }
 
     private fun startLocalRecording() {
-        localRecognizer?.destroy()
-        val recognizer = LocalSpeechRecognizer(this)
-        recognizer.listener = object : LocalSpeechRecognizer.Listener {
-            override fun onRecordingStarted() {
-                runOnUiThread {
-                    isRecording = true
-                    updateVoiceButton(true)
-                    tvLastCmd.text = "聆听中(本地)..."
+        // 复用同一个 LocalSpeechRecognizer 实例，避免频繁创建销毁导致识别器忙
+        if (localRecognizer == null) {
+            val recognizer = LocalSpeechRecognizer(this)
+            recognizer.listener = object : LocalSpeechRecognizer.Listener {
+                override fun onRecordingStarted() {
+                    runOnUiThread {
+                        isRecording = true
+                        updateVoiceButton(true)
+                        tvLastCmd.text = "聆听中(本地)..."
+                    }
                 }
-            }
 
-            override fun onTranscribing() {
-                runOnUiThread {
-                    isRecording = false
-                    updateVoiceButton(false)
-                    tvLastCmd.text = "识别中..."
+                override fun onTranscribing() {
+                    runOnUiThread {
+                        isRecording = false
+                        updateVoiceButton(false)
+                        tvLastCmd.text = "识别中..."
+                    }
                 }
-            }
 
-            override fun onResult(text: String) {
-                runOnUiThread {
-                    isRecording = false
-                    updateVoiceButton(false)
-                    processVoiceCommand(text)
+                override fun onResult(text: String) {
+                    runOnUiThread {
+                        isRecording = false
+                        updateVoiceButton(false)
+                        processVoiceCommand(text)
+                    }
                 }
-            }
 
-            override fun onError(message: String) {
-                XLog.w(TAG, "Local STT error: $message")
-                runOnUiThread {
-                    isRecording = false
-                    updateVoiceButton(false)
-                    tvLastCmd.text = message
+                override fun onError(message: String) {
+                    XLog.w(TAG, "Local STT error: $message")
+                    runOnUiThread {
+                        isRecording = false
+                        updateVoiceButton(false)
+                        tvLastCmd.text = message
+                    }
                 }
             }
+            localRecognizer = recognizer
         }
-        localRecognizer = recognizer
-        recognizer.startListening()
+        localRecognizer?.startListening()
     }
 
     private fun startHttpRecording() {
@@ -382,6 +383,7 @@ class CarControlActivity : BaseActivity() {
 
     private fun stopRecording() {
         if (KVUtils.isSttUseLocal()) {
+            // 本地识别：调用 stopListening 让系统完成录音并返回识别结果
             localRecognizer?.stopListening()
         } else {
             voiceController?.stopListening()

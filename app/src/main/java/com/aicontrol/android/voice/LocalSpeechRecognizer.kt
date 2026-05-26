@@ -3,6 +3,8 @@ package com.aicontrol.android.voice
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -14,12 +16,20 @@ import java.util.Locale
  *
  * 封装 SpeechRecognizer，使用按住说话松手识别模式。
  * 无需网络 API，可离线使用（取决于系统是否下载了离线语音包）。
- * 兼容国产 ROM：优先使用 SpeechRecognizer，失败时提示用户。
+ *
+ * 关键设计：
+ * - 复用同一个 SpeechRecognizer 实例，避免频繁 create/destroy 导致 ERROR_RECOGNIZER_BUSY
+ * - isListening 状态锁，防止并发调用
+ * - ERROR_RECOGNIZER_BUSY / ERROR_CLIENT 时自动延迟重试（最多 1 次）
+ * - 移除 EXTRA_PROMPT（避免部分 ROM 弹窗干扰）
+ * - 设置 EXTRA_CALLING_PACKAGE（部分国产 ROM 要求）
  */
 class LocalSpeechRecognizer(private val context: Context) {
 
     companion object {
         private const val TAG = "LocalSTT"
+        private const val RETRY_DELAY_MS = 300L
+        private const val MAX_RETRY = 1
     }
 
     interface Listener {
@@ -36,6 +46,9 @@ class LocalSpeechRecognizer(private val context: Context) {
     var listener: Listener? = null
 
     private var speechRecognizer: SpeechRecognizer? = null
+    private var isListening = false
+    private var retryCount = 0
+    private val handler = Handler(Looper.getMainLooper())
 
     private val recognitionListener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {
@@ -44,6 +57,7 @@ class LocalSpeechRecognizer(private val context: Context) {
 
         override fun onBeginningOfSpeech() {
             Log.i(TAG, "Beginning of speech")
+            isListening = true
             listener?.onRecordingStarted()
         }
 
@@ -53,9 +67,13 @@ class LocalSpeechRecognizer(private val context: Context) {
 
         override fun onEndOfSpeech() {
             Log.i(TAG, "End of speech")
+            isListening = false
+            listener?.onTranscribing()
         }
 
         override fun onError(error: Int) {
+            isListening = false
+
             val msg = when (error) {
                 SpeechRecognizer.ERROR_AUDIO -> "录音错误"
                 SpeechRecognizer.ERROR_CLIENT -> "客户端错误"
@@ -69,10 +87,29 @@ class LocalSpeechRecognizer(private val context: Context) {
                 else -> "未知错误($error)"
             }
             Log.w(TAG, "SpeechRecognizer error $error: $msg")
+
+            // 识别器忙或客户端错误 → 延迟重试一次
+            if ((error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY
+                        || error == SpeechRecognizer.ERROR_CLIENT)
+                && retryCount < MAX_RETRY
+            ) {
+                retryCount++
+                Log.i(TAG, "Retrying startListening (retry=$retryCount)...")
+                handler.postDelayed({
+                    internalStartListening()
+                }, RETRY_DELAY_MS)
+                return
+            }
+
+            // 重试次数耗尽或其他错误，通知上层
+            retryCount = 0
             listener?.onError(msg)
         }
 
         override fun onResults(results: Bundle?) {
+            isListening = false
+            retryCount = 0
+
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             if (matches.isNullOrEmpty()) {
                 listener?.onError("未识别到语音内容")
@@ -91,7 +128,8 @@ class LocalSpeechRecognizer(private val context: Context) {
     }
 
     /**
-     * 开始语音识别
+     * 开始语音识别（对外接口）
+     * 如果当前正在识别，先取消再重新开始
      */
     fun startListening() {
         // 先检查设备是否支持语音识别
@@ -100,11 +138,31 @@ class LocalSpeechRecognizer(private val context: Context) {
             return
         }
 
-        // 销毁旧的
-        destroy()
+        // 确保 SpeechRecognizer 实例已创建（复用，不每次新建）
+        ensureRecognizer()
 
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-            setRecognitionListener(recognitionListener)
+        // 如果正在识别，先取消
+        if (isListening) {
+            Log.w(TAG, "Already listening, cancel first")
+            try {
+                speechRecognizer?.cancel()
+            } catch (e: Exception) {
+                Log.w(TAG, "cancel before restart error", e)
+            }
+            isListening = false
+        }
+
+        retryCount = 0
+        internalStartListening()
+    }
+
+    /**
+     * 内部实际启动监听
+     */
+    private fun internalStartListening() {
+        val recognizer = speechRecognizer ?: run {
+            listener?.onError("语音识别器初始化失败")
+            return
         }
 
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -112,35 +170,69 @@ class LocalSpeechRecognizer(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-CN")
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            // 提示文字（部分 ROM 会显示弹窗）
-            putExtra(RecognizerIntent.EXTRA_PROMPT, "")
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
+            // 不设置 EXTRA_PROMPT，避免部分 ROM 弹出对话框干扰
         }
 
         try {
-            speechRecognizer?.startListening(intent)
-            Log.i(TAG, "startListening")
+            recognizer.startListening(intent)
+            Log.i(TAG, "startListening called")
         } catch (e: Exception) {
             Log.e(TAG, "startListening failed", e)
+            retryCount = 0
             listener?.onError("启动语音识别失败: ${e.message}")
-            destroy()
         }
     }
 
     /**
-     * 停止语音识别
+     * 停止语音识别（松手时调用）
+     * 调用 stopListening() 让系统完成当前录音并返回结果
      */
     fun stopListening() {
+        if (!isListening) return
         try {
             speechRecognizer?.stopListening()
+            Log.i(TAG, "stopListening called")
         } catch (e: Exception) {
             Log.w(TAG, "stopListening error", e)
+            isListening = false
         }
     }
 
     /**
-     * 释放资源
+     * 取消语音识别（不触发 onResults）
+     */
+    fun cancel() {
+        try {
+            speechRecognizer?.cancel()
+        } catch (e: Exception) {
+            Log.w(TAG, "cancel error", e)
+        }
+        isListening = false
+        retryCount = 0
+    }
+
+    /**
+     * 确保 SpeechRecognizer 实例存在（复用模式）
+     */
+    private fun ensureRecognizer() {
+        if (speechRecognizer != null) return
+        try {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context)
+            speechRecognizer?.setRecognitionListener(recognitionListener)
+            Log.i(TAG, "SpeechRecognizer created (reusable)")
+        } catch (e: Exception) {
+            Log.e(TAG, "createSpeechRecognizer failed", e)
+            listener?.onError("创建语音识别器失败: ${e.message}")
+            speechRecognizer = null
+        }
+    }
+
+    /**
+     * 释放资源（Activity onDestroy 时调用）
      */
     fun destroy() {
+        handler.removeCallbacksAndMessages(null)
         try {
             speechRecognizer?.cancel()
             speechRecognizer?.destroy()
@@ -148,5 +240,7 @@ class LocalSpeechRecognizer(private val context: Context) {
             Log.w(TAG, "destroy error", e)
         }
         speechRecognizer = null
+        isListening = false
+        retryCount = 0
     }
 }
