@@ -1,7 +1,7 @@
 {
-  "versionCode": 65,
-  "versionName": "v0.0.65",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.65/AiControl_v0.0.65_20260526_054551.apk",
-  "releaseNotes": "修复小车控制闪退 + 界面汉化 + 回中显示0%",
+  "versionCode": 66,
+  "versionName": "v0.0.66",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.66/AiControl-latest.apk",
+  "releaseNotes": "修复文字重叠 + 前后方向反转",
   "releaseDate": "2026-05-26"
 }
