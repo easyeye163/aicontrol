@@ -1,7 +1,7 @@
 {
-  "versionCode": 71,
-  "versionName": "v0.0.71",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.71/AiControl-latest.apk",
-  "releaseNotes": "语音关键词改为拼音模糊匹配，解决左边/右边等相似词误判",
+  "versionCode": 72,
+  "versionName": "v0.0.72",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.72/AiControl-latest.apk",
+  "releaseNotes": "新增本地语音识别(SpeechRecognizer)，STT设置可切换离线/在线模式",
   "releaseDate": "2026-05-26"
 }

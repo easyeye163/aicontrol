@@ -7,6 +7,7 @@ import android.view.View
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.widget.SwitchCompat
 import com.aicontrol.android.R
 import com.aicontrol.android.base.BaseActivity
 import com.aicontrol.android.utils.KVUtils
@@ -38,6 +39,17 @@ class SttConfigActivity : BaseActivity() {
         val etBaseUrl = findViewById<EditText>(R.id.etBaseUrl)
         val etApiKey = findViewById<EditText>(R.id.etApiKey)
         val etModelName = findViewById<EditText>(R.id.etModelName)
+        val switchLocal = findViewById<SwitchCompat>(R.id.switchLocalStt)
+        val layoutHttpConfig = findViewById<View>(R.id.layoutHttpConfig)
+
+        // 加载本地识别开关
+        switchLocal.isChecked = KVUtils.isSttUseLocal()
+        updateHttpConfigVisibility(switchLocal.isChecked, layoutHttpConfig)
+
+        switchLocal.setOnCheckedChangeListener { _, isChecked ->
+            KVUtils.setSttUseLocal(isChecked)
+            updateHttpConfigVisibility(isChecked, layoutHttpConfig)
+        }
 
         etBaseUrl.setText(KVUtils.getSttBaseUrl())
         etApiKey.setText(KVUtils.getSttApiKey())
@@ -68,6 +80,11 @@ class SttConfigActivity : BaseActivity() {
             Toast.makeText(this, getString(R.string.stt_config_cleared), Toast.LENGTH_SHORT).show()
             finish()
         }
+    }
+
+    private fun updateHttpConfigVisibility(isLocalEnabled: Boolean, layoutHttpConfig: View) {
+        layoutHttpConfig.visibility = if (isLocalEnabled) View.GONE else View.VISIBLE
+        findViewById<View>(R.id.tvTip)?.visibility = if (isLocalEnabled) View.GONE else View.VISIBLE
     }
 
     private fun showImportExportMenu() {

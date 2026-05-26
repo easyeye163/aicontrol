@@ -23,6 +23,7 @@ import com.aicontrol.android.base.BaseActivity
 import com.aicontrol.android.floating.voice.TtsManager
 import com.aicontrol.android.utils.KVUtils
 import com.aicontrol.android.utils.XLog
+import com.aicontrol.android.voice.LocalSpeechRecognizer
 import com.aicontrol.android.voice.VoiceInputController
 import com.aicontrol.android.widget.SingleAxisJoystickView
 import kotlinx.coroutines.Dispatchers
@@ -69,6 +70,7 @@ class CarControlActivity : BaseActivity() {
     private var isRecording = false
     private var ttsManager: TtsManager? = null
     private var voiceController: VoiceInputController? = null
+    private var localRecognizer: LocalSpeechRecognizer? = null
 
     // 录音权限请求
     private val recordPermissionLauncher = registerForActivityResult(
@@ -147,6 +149,8 @@ class CarControlActivity : BaseActivity() {
         if (isRecording) {
             voiceController?.destroy()
             voiceController = null
+            localRecognizer?.destroy()
+            localRecognizer = null
             isRecording = false
             updateVoiceButton(false)
             tvLastCmd.text = "就绪"
@@ -157,6 +161,7 @@ class CarControlActivity : BaseActivity() {
         super.onDestroy()
         sendCommand("stop")
         voiceController?.destroy()
+        localRecognizer?.destroy()
         ttsManager?.shutdown()
     }
 
@@ -181,8 +186,9 @@ class CarControlActivity : BaseActivity() {
                         recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         return@setOnTouchListener true
                     }
-                    if (!KVUtils.hasSttConfig()) {
-                        Toast.makeText(this, "请先配置STT语音识别（设置 > 模型 > STT配置）", Toast.LENGTH_LONG).show()
+                    // 本地语音不需要 API 配置，HTTP 语音需要检查
+                    if (!KVUtils.isSttUseLocal() && !KVUtils.hasSttConfig()) {
+                        Toast.makeText(this, "请先配置STT语音识别（设置 > 模型 > STT配置）\n或在STT设置中开启本地语音识别", Toast.LENGTH_LONG).show()
                         return@setOnTouchListener true
                     }
                     startRecording()
@@ -289,7 +295,55 @@ class CarControlActivity : BaseActivity() {
     }
 
     private fun startRecording() {
-        // 每次重新创建 VoiceInputController，确保干净状态
+        if (KVUtils.isSttUseLocal()) {
+            startLocalRecording()
+        } else {
+            startHttpRecording()
+        }
+    }
+
+    private fun startLocalRecording() {
+        localRecognizer?.destroy()
+        val recognizer = LocalSpeechRecognizer(this)
+        recognizer.listener = object : LocalSpeechRecognizer.Listener {
+            override fun onRecordingStarted() {
+                runOnUiThread {
+                    isRecording = true
+                    updateVoiceButton(true)
+                    tvLastCmd.text = "聆听中(本地)..."
+                }
+            }
+
+            override fun onTranscribing() {
+                runOnUiThread {
+                    isRecording = false
+                    updateVoiceButton(false)
+                    tvLastCmd.text = "识别中..."
+                }
+            }
+
+            override fun onResult(text: String) {
+                runOnUiThread {
+                    isRecording = false
+                    updateVoiceButton(false)
+                    processVoiceCommand(text)
+                }
+            }
+
+            override fun onError(message: String) {
+                XLog.w(TAG, "Local STT error: $message")
+                runOnUiThread {
+                    isRecording = false
+                    updateVoiceButton(false)
+                    tvLastCmd.text = message
+                }
+            }
+        }
+        localRecognizer = recognizer
+        recognizer.startListening()
+    }
+
+    private fun startHttpRecording() {
         voiceController?.destroy()
         val controller = VoiceInputController(this)
         controller.listener = object : VoiceInputController.Listener {
@@ -327,7 +381,11 @@ class CarControlActivity : BaseActivity() {
     }
 
     private fun stopRecording() {
-        voiceController?.stopListening()
+        if (KVUtils.isSttUseLocal()) {
+            localRecognizer?.stopListening()
+        } else {
+            voiceController?.stopListening()
+        }
         isRecording = false
         updateVoiceButton(false)
         tvLastCmd.text = "识别中..."

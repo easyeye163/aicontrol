@@ -4,7 +4,19 @@
     <com.aicontrol.android.widget.CommonToolbar android:id="@+id/toolbar" android:layout_width="fill_parent" android:layout_height="56.0pt" />
     <ScrollView android:paddingTop="16.0pt" android:clipToPadding="false" android:layout_width="fill_parent" android:layout_height="fill_parent" android:paddingHorizontal="16.0pt">
         <LinearLayout android:orientation="vertical" android:layout_width="fill_parent" android:layout_height="wrap_content">
-            <TextView android:textSize="14.0pt" android:textColor="@color/colorTextSecondary" android:id="@+id/tvTip" android:paddingBottom="16.0pt" android:layout_width="fill_parent" android:layout_height="wrap_content" android:text="@string/stt_config_tip" android:paddingHorizontal="4.0pt" />
+            <!-- 本地语音识别开关 -->
+            <androidx.cardview.widget.CardView android:layout_width="fill_parent" android:layout_height="wrap_content" app:cardBackgroundColor="@color/colorContainerBrighten" app:cardCornerRadius="12.0pt" app:cardElevation="1.0pt">
+                <LinearLayout android:orientation="horizontal" android:layout_width="fill_parent" android:layout_height="wrap_content" android:paddingHorizontal="16.0pt" android:paddingVertical="14.0pt" android:gravity="center_vertical">
+                    <LinearLayout android:orientation="vertical" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1">
+                        <TextView android:textSize="15.0pt" android:textStyle="bold" android:textColor="@color/colorTextPrimary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="使用本地语音识别" />
+                        <TextView android:textSize="12.0pt" android:textColor="@color/colorTextTertiary" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4.0pt" android:text="开启后使用系统自带语音识别，无需配置API，可离线使用" />
+                    </LinearLayout>
+                    <androidx.appcompat.widget.SwitchCompat android:id="@+id/switchLocalStt" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="12.0pt" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <TextView android:textSize="14.0pt" android:textColor="@color/colorTextSecondary" android:id="@+id/tvTip" android:paddingTop="16.0pt" android:paddingBottom="16.0pt" android:layout_width="fill_parent" android:layout_height="wrap_content" android:text="HTTP API 语音识别配置（关闭本地识别时使用）" android:paddingHorizontal="4.0pt" />
+            <LinearLayout android:id="@+id/layoutHttpConfig" android:orientation="vertical" android:layout_width="fill_parent" android:layout_height="wrap_content">
             <TextView android:textSize="14.0pt" android:textStyle="bold" android:textColor="@color/colorTextPrimary" android:paddingBottom="8.0pt" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="@string/stt_config_base_url" android:paddingHorizontal="4.0pt" />
             <androidx.cardview.widget.CardView android:layout_width="fill_parent" android:layout_height="wrap_content" app:cardBackgroundColor="@color/colorContainerBrighten" app:cardCornerRadius="12.0pt" app:cardElevation="1.0pt">
                 <EditText android:textSize="15.0pt" android:textColor="@color/colorTextPrimary" android:textColorHint="@color/colorTextTertiary" android:id="@+id/etBaseUrl" android:background="@null" android:layout_width="fill_parent" android:layout_height="48.0pt" android:hint="@string/stt_config_base_url_hint" android:maxLines="1" android:singleLine="true" android:inputType="textUri" android:paddingHorizontal="16.0pt" />
@@ -19,6 +31,7 @@
             </androidx.cardview.widget.CardView>
             <com.aicontrol.android.widget.KButton android:textSize="16.0pt" android:id="@+id/btnSave" android:layout_width="fill_parent" android:layout_height="48.0pt" android:layout_marginTop="32.0pt" android:text="@string/common_save" />
             <com.aicontrol.android.widget.KButton android:textSize="16.0pt" android:id="@+id/btnClear" android:layout_width="fill_parent" android:layout_height="48.0pt" android:layout_marginTop="12.0pt" android:text="@string/stt_config_clear" app:btnBackground="@color/colorContainerBrighten" app:btnBorderColor="@color/colorBorderBase" app:btnTextColor="@color/colorTextSecondary" />
+            </LinearLayout>
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

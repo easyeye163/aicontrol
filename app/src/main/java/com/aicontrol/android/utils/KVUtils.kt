@@ -240,6 +240,7 @@ object KVUtils {
     private const val KEY_STT_BASE_URL = "KEY_STT_BASE_URL"
     private const val KEY_STT_API_KEY = "KEY_STT_API_KEY"
     private const val KEY_STT_MODEL = "KEY_STT_MODEL"
+    private const val KEY_STT_USE_LOCAL = "KEY_STT_USE_LOCAL"
 
     fun getSttBaseUrl(): String = getString(KEY_STT_BASE_URL, "")
     fun setSttBaseUrl(value: String): Boolean = putString(KEY_STT_BASE_URL, value)
@@ -249,6 +250,10 @@ object KVUtils {
 
     fun getSttModel(): String = getString(KEY_STT_MODEL, "")
     fun setSttModel(value: String): Boolean = putString(KEY_STT_MODEL, value)
+
+    /** 是否使用系统自带语音识别（离线可用，无需 API） */
+    fun isSttUseLocal(): Boolean = getBoolean(KEY_STT_USE_LOCAL, false)
+    fun setSttUseLocal(enabled: Boolean): Boolean = putBoolean(KEY_STT_USE_LOCAL, enabled)
 
     fun hasSttConfig(): Boolean = getSttBaseUrl().isNotEmpty()
 
