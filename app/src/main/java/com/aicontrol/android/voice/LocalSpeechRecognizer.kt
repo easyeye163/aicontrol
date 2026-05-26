@@ -2,6 +2,8 @@ package com.aicontrol.android.voice
 
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -172,11 +174,20 @@ class LocalSpeechRecognizer(private val context: Context) {
      * 关键：cancel() 后必须延时 200ms 再 startListening()，
      * 否则某些设备/ROM 上识别器会静默无响应（onBeginningOfSpeech 正常回调，
      * 但之后 onEndOfSpeech/onResults/onError 全部不回调）
+     *
+     * 如果当前无互联网，直接报错提示，避免启动后卡死在"聆听中"状态
      */
     fun startListening() {
         // 先检查设备是否支持语音识别
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             listener?.onError("设备不支持语音识别")
+            return
+        }
+
+        // 检查网络：系统语音识别器做中文识别通常需要联网
+        if (!hasInternet()) {
+            Log.w(TAG, "No internet, SpeechRecognizer will likely hang")
+            listener?.onError("无互联网，本地语音识别需要网络(建议用API模式或检查WiFi)")
             return
         }
 
@@ -206,6 +217,22 @@ class LocalSpeechRecognizer(private val context: Context) {
         } else {
             // 首次启动：无需延时
             internalStartListening()
+        }
+    }
+
+    /**
+     * 检查设备是否有活跃的互联网连接
+     */
+    private fun hasInternet(): Boolean {
+        try {
+            val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return true // 无法检测时默认允许
+            val network = cm.activeNetwork ?: return false
+            val caps = cm.getNetworkCapabilities(network) ?: return false
+            return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        } catch (_: Exception) {
+            return true
         }
     }
 
