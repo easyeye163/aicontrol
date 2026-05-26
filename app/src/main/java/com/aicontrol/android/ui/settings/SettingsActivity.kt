@@ -1,0 +1,415 @@
+package com.aicontrol.android.ui.settings
+
+import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.aicontrol.android.R
+import com.aicontrol.android.base.BaseActivity
+import com.aicontrol.android.widget.AlertDialog
+import com.aicontrol.android.widget.CommonToolbar
+import com.aicontrol.android.widget.MenuGroup
+import com.aicontrol.android.widget.MenuItem
+import kotlinx.coroutines.launch
+import android.content.Intent
+import android.net.Uri
+import com.aicontrol.android.appViewModel
+import com.aicontrol.android.server.ConfigServerManager
+import com.aicontrol.android.updater.AppUpdater
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+/**
+ * 设置页面
+ */
+class SettingsActivity : BaseActivity() {
+
+    private val viewModel by lazy {
+        ViewModelProvider(this)[SettingsViewModel::class.java]
+    }
+
+    // 保存 MenuItem 引用以便动态更新
+    private val menuItems = mutableMapOf<String, MenuItem>()
+
+    // 注册 LLM 配置页返回后刷新
+    private val llmConfigLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { _ ->
+        viewModel.refresh()
+    }
+
+    // 注册通道配置结果回调
+    private val channelConfigLauncher = ChannelConfigActivity.registerLauncher(this) { result ->
+        result?.let {
+            // 配置成功后刷新设置项（刷新"已绑定"/"未绑定"状态）
+            viewModel.refresh()
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_settings)
+
+        initToolbar()
+        initMenuGroups()
+        observeViewModel()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshSettings()
+    }
+
+    private fun initToolbar() {
+        findViewById<CommonToolbar>(R.id.toolbar).apply {
+            setTitle(getString(R.string.settings_title))
+            showBackButton(true) { finish() }
+        }
+    }
+
+    private fun refreshSettings() {
+        viewModel.refresh()
+    }
+
+    private fun initMenuGroups() {
+        // 通道
+        val channelGroup = findViewById<MenuGroup>(R.id.channelGroup)
+        channelGroup.setTitle(getString(R.string.settings_group_channel))
+
+        menuItems[SettingsViewModel.MenuAction.DINGDING.name] = channelGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_channel_dingtalk,
+            title = getString(R.string.menu_dingtalk),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.DINGDING) },
+            showDivider = true
+        )
+        menuItems[SettingsViewModel.MenuAction.FEISHU.name] = channelGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_channel_feishu,
+            title = getString(R.string.menu_feishu),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.FEISHU) },
+            showDivider = true
+        )
+        menuItems[SettingsViewModel.MenuAction.QQ.name] = channelGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_channel_qq,
+            title = getString(R.string.menu_qq),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.QQ) },
+            showDivider = true
+        )
+        menuItems[SettingsViewModel.MenuAction.DISCORD.name] = channelGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_channel_discord,
+            title = getString(R.string.menu_discord),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.DISCORD) },
+            showDivider = true
+        )
+        menuItems[SettingsViewModel.MenuAction.TELEGRAM.name] = channelGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_channel_telegram,
+            title = getString(R.string.menu_telegram),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.TELEGRAM) },
+            showDivider = true
+        )
+        menuItems[SettingsViewModel.MenuAction.WECHAT.name] = channelGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_channel_wechat,
+            title = getString(R.string.menu_wechat),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.WECHAT) },
+            showDivider = true
+        )
+        menuItems[SettingsViewModel.MenuAction.LAN_CONFIG.name] = channelGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_lan_config,
+            title = getString(R.string.menu_lan_config),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.LAN_CONFIG) },
+            showDivider = false
+        )
+        menuItems[SettingsViewModel.MenuAction.LAN_CONFIG.name]?.setLeadingIconColor(getColor(R.color.colorTextPrimary))
+
+        menuItems[SettingsViewModel.MenuAction.CLOUD_CHAT.name] = channelGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_channel_cloud,
+            title = getString(R.string.menu_cloud_chat),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.CLOUD_CHAT) },
+            showDivider = false
+        )
+        menuItems[SettingsViewModel.MenuAction.CLOUD_CHAT.name]?.setLeadingIconColor(getColor(R.color.colorTextPrimary))
+
+
+        val modelGroup = findViewById<MenuGroup>(R.id.modelGroup)
+        modelGroup.setTitle(getString(R.string.settings_group_model))
+
+        menuItems[SettingsViewModel.MenuAction.LLM_CONFIG.name] = modelGroup.addMenuItem(
+            leadingIcon = R.drawable.icon_current_model,
+            title = getString(R.string.menu_llm_config),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.LLM_CONFIG) },
+            showDivider = false
+        )
+        menuItems[SettingsViewModel.MenuAction.LLM_CONFIG.name]?.setLeadingIconColor(getColor(R.color.colorTextPrimary))
+
+        menuItems[SettingsViewModel.MenuAction.LOCAL_MODEL_CONFIG.name] = modelGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_channel_cloud,
+            title = getString(R.string.menu_local_model),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.LOCAL_MODEL_CONFIG) },
+            showDivider = false
+        )
+        menuItems[SettingsViewModel.MenuAction.LOCAL_MODEL_CONFIG.name]?.setLeadingIconColor(getColor(R.color.colorTextPrimary))
+
+        menuItems[SettingsViewModel.MenuAction.TTS_CONFIG.name] = modelGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_volume_up,
+            title = getString(R.string.menu_tts_config),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.TTS_CONFIG) },
+            showDivider = false
+        )
+        menuItems[SettingsViewModel.MenuAction.TTS_CONFIG.name]?.setLeadingIconColor(getColor(R.color.colorTextPrimary))
+
+        menuItems[SettingsViewModel.MenuAction.STT_CONFIG.name] = modelGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_mic,
+            title = getString(R.string.menu_stt_config),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.STT_CONFIG) },
+            showDivider = false
+        )
+        menuItems[SettingsViewModel.MenuAction.STT_CONFIG.name]?.setLeadingIconColor(getColor(R.color.colorTextPrimary))
+
+        menuItems[SettingsViewModel.MenuAction.WEBRTC_CONFIG.name] = modelGroup.addMenuItem(
+            leadingIcon = R.drawable.ic_channel_cloud,
+            title = getString(R.string.menu_webrtc_config),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.WEBRTC_CONFIG) },
+            showDivider = false
+        )
+        menuItems[SettingsViewModel.MenuAction.WEBRTC_CONFIG.name]?.setLeadingIconColor(getColor(R.color.colorTextPrimary))
+
+        // About group - Check for Updates
+        val aboutGroup = findViewById<com.aicontrol.android.widget.MenuGroup>(R.id.aboutGroup)
+        aboutGroup.setTitle(getString(R.string.settings_group_about))
+
+        val updater = AppUpdater(this)
+        val currentVer = "v${updater.getCurrentVersionName()}"
+        menuItems[SettingsViewModel.MenuAction.CHECK_UPDATE.name] = aboutGroup.addMenuItem(
+            leadingIcon = android.R.drawable.ic_popup_sync,
+            title = getString(R.string.menu_check_update),
+            onClick = { viewModel.onMenuItemClick(SettingsViewModel.MenuAction.CHECK_UPDATE) },
+            showDivider = false
+        )
+        menuItems[SettingsViewModel.MenuAction.CHECK_UPDATE.name]?.setTrailingText(currentVer)
+    }
+
+    private fun observeViewModel() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                // 监听设置项变化，动态更新 UI
+                launch {
+                    viewModel.settingItems.collect { items ->
+                        items.forEach { (key, value) ->
+                            when (value) {
+                                is SettingsViewModel.SettingValue.Text -> {
+                                    menuItems[key]?.setTrailingText(value.text)
+                                }
+                                is SettingsViewModel.SettingValue.Switch -> {
+                                    // 如果有开关，可以在这里更新
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 监听 H5 页面配置变更（含 LLM/通道），刷新 UI 并重新初始化 Agent 与通道
+                launch {
+                    ConfigServerManager.configChanged.collect {
+                        viewModel.refresh()
+                        appViewModel.initAgent()
+                        appViewModel.afterInit()
+                    }
+                }
+
+                // 监听菜单点击事件
+                launch {
+                    viewModel.menuClickEvent.collect { action ->
+                        when (action) {
+                            SettingsViewModel.MenuAction.DINGDING -> {
+                                if (viewModel.isDingtalkBound()) {
+                                    showUnbindDialog(getString(R.string.channel_dingtalk)) {
+                                        viewModel.unbindDingtalk()
+                                        Toast.makeText(this@SettingsActivity, R.string.common_unbound_success, Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    channelConfigLauncher.launch(ChannelConfigActivity.ChannelType.DINGTALK)
+                                }
+                            }
+                            SettingsViewModel.MenuAction.FEISHU -> {
+                                if (viewModel.isFeishuBound()) {
+                                    showUnbindDialog(getString(R.string.channel_feishu)) {
+                                        viewModel.unbindFeishu()
+                                        Toast.makeText(this@SettingsActivity, R.string.common_unbound_success, Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    channelConfigLauncher.launch(ChannelConfigActivity.ChannelType.FEISHU)
+                                }
+                            }
+                            SettingsViewModel.MenuAction.WECHAT -> {
+                                if (viewModel.isWechatBound()) {
+                                    showUnbindDialog(getString(R.string.channel_wechat)) {
+                                        viewModel.unbindWeChat()
+                                        Toast.makeText(this@SettingsActivity, R.string.common_unbound_success, Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    viewModel.startWeChatQrLogin(this@SettingsActivity)
+                                }
+                            }
+                            SettingsViewModel.MenuAction.QQ -> {
+                                if (viewModel.isQqBound()) {
+                                    showUnbindDialog(getString(R.string.channel_qq)) {
+                                        viewModel.unbindQq()
+                                        Toast.makeText(this@SettingsActivity, R.string.common_unbound_success, Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    channelConfigLauncher.launch(ChannelConfigActivity.ChannelType.QQ)
+                                }
+                            }
+                            SettingsViewModel.MenuAction.DISCORD -> {
+                                if (viewModel.isDiscordBound()) {
+                                    showUnbindDialog(getString(R.string.channel_discord)) {
+                                        viewModel.unbindDiscord()
+                                        Toast.makeText(this@SettingsActivity, R.string.common_unbound_success, Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    channelConfigLauncher.launch(ChannelConfigActivity.ChannelType.DISCORD)
+                                }
+                            }
+                            SettingsViewModel.MenuAction.TELEGRAM -> {
+                                if (viewModel.isTelegramBound()) {
+                                    showUnbindDialog(getString(R.string.channel_telegram)) {
+                                        viewModel.unbindTelegram()
+                                        Toast.makeText(this@SettingsActivity, R.string.common_unbound_success, Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    channelConfigLauncher.launch(ChannelConfigActivity.ChannelType.TELEGRAM)
+                                }
+                            }
+                            SettingsViewModel.MenuAction.LAN_CONFIG -> {
+                                val result = viewModel.toggleConfigServer(this@SettingsActivity)
+                                if (result == getString(R.string.lan_config_no_wifi)) {
+                                    Toast.makeText(this@SettingsActivity, R.string.lan_config_no_wifi, Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            SettingsViewModel.MenuAction.CLOUD_CHAT -> {
+                                val intent = Intent(this@SettingsActivity, CloudChatConfigActivity::class.java)
+                                llmConfigLauncher.launch(intent)
+                            }
+                            SettingsViewModel.MenuAction.LLM_CONFIG -> {
+                                llmConfigLauncher.launch(Intent(this@SettingsActivity, LlmConfigActivity::class.java))
+                            }
+                            SettingsViewModel.MenuAction.LOCAL_MODEL_CONFIG -> {
+                                llmConfigLauncher.launch(Intent(this@SettingsActivity, LocalModelConfigActivity::class.java))
+                            }
+                            SettingsViewModel.MenuAction.TTS_CONFIG -> {
+                                llmConfigLauncher.launch(Intent(this@SettingsActivity, TtsConfigActivity::class.java))
+                            }
+                            SettingsViewModel.MenuAction.STT_CONFIG -> {
+                                llmConfigLauncher.launch(Intent(this@SettingsActivity, SttConfigActivity::class.java))
+                            }
+                            SettingsViewModel.MenuAction.WEBRTC_CONFIG -> {
+                                val intent = Intent(this@SettingsActivity, WebRTCConfigActivity::class.java)
+                                llmConfigLauncher.launch(intent)
+                            }
+                            SettingsViewModel.MenuAction.CHECK_UPDATE -> {
+                                checkForUpdate()
+                            }
+                            null -> {}
+                            else -> {}
+                        }
+                        viewModel.clearMenuClickEvent()
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 显示解除绑定确认弹窗
+     */
+    private fun showUnbindDialog(channelName: String, onUnbind: () -> Unit) {
+        AlertDialog.showWarm(
+            context = this,
+            title = getString(R.string.unbind_title),
+            message = getString(R.string.unbind_message, channelName, channelName),
+            actionTitle = getString(R.string.unbind_action),
+            onAction = onUnbind
+        )
+    }
+
+    /**
+     * 检查应用更新
+     */
+    private fun checkForUpdate() {
+        val updater = AppUpdater(this)
+        val loadingDialog = com.aicontrol.android.widget.LoadingDialog.show(
+            context = this,
+            message = getString(R.string.update_checking)
+        )
+
+        lifecycleScope.launch {
+            try {
+                val updateInfo = withContext(Dispatchers.IO) {
+                    updater.checkForUpdate()
+                }
+                loadingDialog.dismiss()
+
+                if (!updateInfo.hasUpdate) {
+                    Toast.makeText(this@SettingsActivity, R.string.update_latest, Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                showUpdateDialog(updater, updateInfo)
+            } catch (e: Exception) {
+                loadingDialog.dismiss()
+                Toast.makeText(this@SettingsActivity, R.string.update_check_failed, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /**
+     * 显示更新弹窗
+     */
+    private fun showUpdateDialog(updater: AppUpdater, info: AppUpdater.UpdateInfo) {
+        val sizeStr = updater.formatFileSize(info.fileSize)
+        var message = getString(
+            R.string.update_found_message,
+            info.currentVersionName,
+            info.currentVersionCode,
+            info.latestVersionName,
+            info.latestVersionCode,
+            sizeStr.ifEmpty { "N/A" }
+        )
+
+        if (!info.releaseNotes.isNullOrEmpty()) {
+            message += "\n\n" + getString(R.string.update_release_notes, info.releaseNotes)
+        }
+
+        AlertDialog.show(
+            context = this,
+            title = getString(R.string.update_found_title, info.latestVersionName),
+            message = message,
+            actionTitle = getString(R.string.update_btn_install),
+            cancelTitle = getString(R.string.update_btn_browser),
+            onAction = {
+                // Install now
+                if (info.downloadUrl != null) {
+                    val downloadDialog = com.aicontrol.android.widget.LoadingDialog.show(
+                        context = this,
+                        message = getString(R.string.update_downloading_title, info.latestVersionName),
+                        cancelable = true
+                    )
+                    lifecycleScope.launch {
+                        val success = kotlinx.coroutines.withContext(Dispatchers.IO) {
+                            updater.downloadAndInstall(info.downloadUrl, info.latestVersionName)
+                        }
+                        downloadDialog.dismiss()
+                        if (!success) {
+                            Toast.makeText(this@SettingsActivity, R.string.update_download_failed, Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+            },
+            onCancel = {
+                // Open in browser
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(AppUpdater.GITHUB_RELEASES_URL))
+                startActivity(intent)
+            }
+        )
+    }
+}

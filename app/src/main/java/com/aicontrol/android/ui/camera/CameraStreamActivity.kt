@@ -1,0 +1,640 @@
+package com.aicontrol.android.ui.camera
+
+import android.os.Bundle
+import android.util.Base64
+import android.view.View
+import android.widget.Button
+import android.widget.ImageButton
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.view.PreviewView
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import com.aicontrol.android.AiControlApplication
+import com.aicontrol.android.R
+import com.aicontrol.android.local.llm.LlamaEngine
+import com.aicontrol.android.floating.voice.VoiceInteractionFloatWindow
+import com.aicontrol.android.service.monitor.StreamMonitorController
+import com.aicontrol.android.utils.KVUtils
+import com.aicontrol.android.utils.XLog
+import com.aicontrol.android.vision.CameraFramePusher
+import com.aicontrol.android.vision.VisionFrameBuffer
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+
+class CameraStreamActivity : AppCompatActivity() {
+
+    companion object {
+        private const val TAG = "CameraStreamActivity"
+        private const val REQUEST_CAMERA_AUDIO = 1001
+        private const val LENS_FACING_FRONT = 0
+        private const val LENS_FACING_BACK = 1
+        private const val MONITOR_INTERVAL_MS = 5000L // 自动监控间隔5秒
+    }
+
+    private lateinit var previewView: PreviewView
+    private lateinit var tvStatus: TextView
+    private lateinit var tvMonitorStatus: TextView
+    private lateinit var btnSwitchCamera: Button
+    private lateinit var btnToggleMonitor: Button
+    private lateinit var btnVoiceFloat: Button
+    private lateinit var btnCloseCamera: ImageButton
+
+    private var ttsManager: com.aicontrol.android.floating.voice.TtsManager? = null
+    private var cameraFramePusher: CameraFramePusher? = null
+    private var isMonitoring = false
+    private var lensFacing = LENS_FACING_BACK
+
+    // 自动监控循环
+    private var monitorScope: CoroutineScope? = null
+    private var monitorJob: Job? = null
+
+    // 监控提示词（可被语音介入更新）
+    @Volatile
+    private var monitorPrompt: String = "请分析当前摄像头画面，描述你看到的内容。"
+
+    // 监控轮次计数
+    private var monitorRound: Int = 0
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setupFullscreen()
+        setContentView(R.layout.activity_camera_stream)
+
+        previewView = findViewById(R.id.preview_view)
+        tvStatus = findViewById(R.id.tv_camera_status)
+        tvMonitorStatus = findViewById(R.id.tv_monitor_status)
+        btnSwitchCamera = findViewById(R.id.btn_switch_camera)
+        btnToggleMonitor = findViewById(R.id.btn_toggle_monitor)
+        btnVoiceFloat = findViewById(R.id.btn_voice_float)
+        btnCloseCamera = findViewById(R.id.btn_close_camera)
+
+        checkPermissionsAndStart()
+        bindButtons()
+    }
+
+    private fun setupFullscreen() {
+        window.setFlags(
+            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN,
+            android.view.WindowManager.LayoutParams.FLAG_FULLSCREEN
+        )
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_FULLSCREEN
+                or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            )
+    }
+
+    private fun checkPermissionsAndStart() {
+        val permissionsToRequest = mutableListOf<String>()
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionsToRequest.add(android.Manifest.permission.CAMERA)
+        }
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionsToRequest.add(android.Manifest.permission.RECORD_AUDIO)
+        }
+
+        if (permissionsToRequest.isNotEmpty()) {
+            ActivityCompat.requestPermissions(
+                this,
+                permissionsToRequest.toTypedArray(),
+                REQUEST_CAMERA_AUDIO
+            )
+        } else {
+            startCameraStream()
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == REQUEST_CAMERA_AUDIO) {
+            for (result in grantResults) {
+                if (result != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    Toast.makeText(this, "需要摄像头和麦克风权限", Toast.LENGTH_SHORT).show()
+                    finish()
+                    return
+                }
+            }
+            startCameraStream()
+        }
+    }
+
+    private fun startCameraStream() {
+        try {
+            VisionFrameBuffer.start()
+
+            val pusher = CameraFramePusher(this, previewView.surfaceProvider)
+            pusher.lensFacing = lensFacing
+            pusher.fps = 2
+            pusher.callback = object : CameraFramePusher.Callback {
+                override fun onCameraError(message: String) {
+                    XLog.e(TAG, "Camera error: $message")
+                }
+            }
+            pusher.start()
+            cameraFramePusher = pusher
+
+            val label = if (lensFacing == LENS_FACING_FRONT) "前置" else "后置"
+            tvStatus.text = "${label}摄像头已启动"
+            XLog.i(TAG, "Camera stream started with frame pusher (lensFacing=$lensFacing)")
+        } catch (e: Exception) {
+            XLog.e(TAG, "Failed to start camera", e)
+            tvStatus.text = "摄像头启动失败: ${e.message}"
+        }
+    }
+
+    private fun bindButtons() {
+        btnCloseCamera.setOnClickListener {
+            finish()
+        }
+
+        btnSwitchCamera.setOnClickListener {
+            cameraFramePusher?.switchCamera()
+            lensFacing = cameraFramePusher?.lensFacing ?: lensFacing
+            val label = if (lensFacing == LENS_FACING_FRONT) "前置" else "后置"
+            Toast.makeText(this, "切换到${label}摄像头", Toast.LENGTH_LONG).show()
+            tvStatus.text = "${label}摄像头已启动"
+        }
+
+        btnToggleMonitor.setOnClickListener {
+            if (isMonitoring) {
+                stopMonitoring()
+            } else {
+                startMonitoring()
+            }
+        }
+
+        btnVoiceFloat.setOnClickListener {
+            if (VoiceInteractionFloatWindow.isShowing()) {
+                VoiceInteractionFloatWindow.dismiss()
+                btnVoiceFloat.text = "语音助手"
+            } else {
+                VoiceInteractionFloatWindow.onVoiceResultCallback = { text ->
+                    showResultMessage("你: $text")
+
+                    if (isMonitoring) {
+                        monitorPrompt = text
+                        showResultMessage("助手: 已更新监控任务: $text")
+                        XLog.i(TAG, "Monitor prompt updated by voice: $text")
+                    }
+
+                    sendToLlmWithFrame(text)
+                }
+                VoiceInteractionFloatWindow.show(application as AiControlApplication)
+                btnVoiceFloat.text = "隐藏语音"
+            }
+        }
+    }
+
+    /**
+     * 开始监控：启动自动循环
+     * 流程：发送提示词 → LLM回复 → 等5秒 → 发送画面 → LLM回复 → 等5秒 → 循环
+     */
+    private fun startMonitoring() {
+        if (isMonitoring) return
+
+        if (!VoiceInteractionFloatWindow.isShowing()) {
+            VoiceInteractionFloatWindow.onVoiceResultCallback = { text ->
+                showResultMessage("你: $text")
+                monitorPrompt = text
+                showResultMessage("助手: 已更新监控任务: $text")
+                XLog.i(TAG, "Monitor prompt updated by voice: $text")
+                sendToLlmWithFrame(text)
+            }
+            VoiceInteractionFloatWindow.show(application as AiControlApplication)
+            btnVoiceFloat.text = "隐藏语音"
+        }
+
+        isMonitoring = true
+        monitorRound = 0
+
+        btnToggleMonitor.text = "停止监控"
+        tvMonitorStatus.text = "监控运行中..."
+        tvMonitorStatus.visibility = View.VISIBLE
+
+        showResultMessage("监控已启动，任务: $monitorPrompt")
+
+        monitorScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        monitorJob = monitorScope?.launch {
+            while (isActive && isMonitoring) {
+                try {
+                    monitorRound++
+                    sendMonitorFrame()
+                } catch (e: Exception) {
+                    XLog.e(TAG, "Monitor loop error at round $monitorRound", e)
+                }
+                // 等待指定间隔
+                delay(MONITOR_INTERVAL_MS)
+            }
+        }
+
+        XLog.i(TAG, "Auto monitoring started, prompt: $monitorPrompt")
+    }
+
+    /**
+     * 停止监控
+     */
+    private fun stopMonitoring() {
+        isMonitoring = false
+        monitorJob?.cancel()
+        monitorScope?.cancel()
+        monitorJob = null
+        monitorScope = null
+
+        btnToggleMonitor.text = "开始监控"
+        tvMonitorStatus.text = "监控已停止"
+
+        showResultMessage("监控已停止 (共${monitorRound}轮)")
+
+        XLog.i(TAG, "Auto monitoring stopped after $monitorRound rounds")
+    }
+
+    /**
+     * 发送一帧画面到 LLM 进行监控分析
+     */
+    private suspend fun sendMonitorFrame() {
+        val frameEntry = VisionFrameBuffer.latestFrame
+        if (frameEntry == null) {
+            XLog.w(TAG, "Monitor round $monitorRound: no frame available, skip")
+            return
+        }
+
+        val currentPrompt = monitorPrompt
+        XLog.i(TAG, "Monitor round $monitorRound: analyzing frame, prompt=$currentPrompt")
+
+        // 优先使用本地模型
+        val reply = if (KVUtils.isLocalModelChatActive()) {
+            callLocalModelVision(
+                systemPrompt = "你是一个视频流监控助手。用户会给你摄像头画面和监控任务。请根据任务要求分析画面内容，用简洁的语言描述你看到的情况。如果检测到用户关注的目标或事件，请明确提醒。",
+                userText = currentPrompt,
+                frameJpegBytes = frameEntry.jpegBytes
+            ) ?: callLlmVision(
+                systemPrompt = "你是一个视频流监控助手。用户会给你摄像头画面和监控任务。请根据任务要求分析画面内容，用简洁的语言描述你看到的情况。如果检测到用户关注的目标或事件，请明确提醒。",
+                userText = currentPrompt,
+                frameJpegBytes = frameEntry.jpegBytes
+            )
+        } else {
+            callLlmVision(
+                systemPrompt = "你是一个视频流监控助手。用户会给你摄像头画面和监控任务。请根据任务要求分析画面内容，用简洁的语言描述你看到的情况。如果检测到用户关注的目标或事件，请明确提醒。",
+                userText = currentPrompt,
+                frameJpegBytes = frameEntry.jpegBytes
+            )
+        }
+
+        if (reply != null) {
+            val displayText = "[${monitorRound}] 助手: $reply"
+            showResultMessage(displayText)
+
+            // TTS 播报每轮回复（先停止上一轮避免重叠）
+            if (KVUtils.isTtsEnabled()) {
+                ttsManager?.stop()
+                speakReply(reply)
+            }
+        }
+    }
+
+    private fun showResultMessage(text: String) {
+        VoiceInteractionFloatWindow.showMonitorResult(text)
+    }
+
+    /**
+     * 将用户语音文本 + 当前摄像头画面一起发送到 LLM（vision多模态）
+     */
+    private fun sendToLlmWithFrame(userText: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val frameEntry = VisionFrameBuffer.latestFrame
+                if (frameEntry != null) {
+                    showResultMessage("助手: 思考中（含画面分析）...")
+                    // 优先使用本地模型
+                    val reply = if (KVUtils.isLocalModelChatActive()) {
+                        callLocalModelVision(
+                            systemPrompt = "你是一个简洁有用的语音助手。用户会给你语音内容和摄像头画面，请结合两者回答。用简短的语言回答。",
+                            userText = userText,
+                            frameJpegBytes = frameEntry.jpegBytes
+                        ) ?: callLlmVision(
+                            systemPrompt = "你是一个简洁有用的语音助手。用户会给你语音内容和摄像头画面，请结合两者回答。用简短的语言回答。",
+                            userText = userText,
+                            frameJpegBytes = frameEntry.jpegBytes
+                        )
+                    } else {
+                        callLlmVision(
+                            systemPrompt = "你是一个简洁有用的语音助手。用户会给你语音内容和摄像头画面，请结合两者回答。用简短的语言回答。",
+                            userText = userText,
+                            frameJpegBytes = frameEntry.jpegBytes
+                        )
+                    }
+                    if (reply != null) {
+                        showResultMessage("助手: $reply")
+                        if (KVUtils.isTtsEnabled()) {
+                            speakReply(reply)
+                        }
+                    }
+                } else {
+                    showResultMessage("助手: 思考中...")
+                    val reply = if (KVUtils.isLocalModelChatActive()) {
+                        callLocalModelTextOnly(userText) ?: callLlmTextOnly(userText)
+                    } else {
+                        callLlmTextOnly(userText)
+                    }
+                    if (reply != null) {
+                        showResultMessage("助手: $reply")
+                        if (KVUtils.isTtsEnabled()) {
+                            speakReply(reply)
+                        }
+                    }
+                }
+            } catch (e: java.net.SocketTimeoutException) {
+                val modelName = KVUtils.getLlmModelName().ifEmpty { "gpt-4o" }
+                XLog.e(TAG, "LLM request timeout: model=$modelName", e)
+                showResultMessage("助手: LLM请求超时，请检查模型[$modelName]是否支持或网络是否畅通")
+            } catch (e: Exception) {
+                XLog.e(TAG, "LLM request failed", e)
+                showResultMessage("助手: 请求失败: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * 使用本地 LlamaEngine 分析（带图片 + 文字）
+     * @return 回复文本，失败返回 null（回退到 HTTP）
+     */
+    private suspend fun callLocalModelVision(
+        systemPrompt: String,
+        userText: String,
+        frameJpegBytes: ByteArray
+    ): String? {
+        val engine = LlamaEngine.getInstance(application)
+        if (!engine.isModelLoaded || !engine._mmprojLoaded) {
+            XLog.w(TAG, "Local model not ready for vision analysis")
+            return null
+        }
+        return try {
+            engine.fullReset()
+            engine.setSystemPrompt(systemPrompt)
+            engine.prefillImage(frameJpegBytes)
+            val resultBuilder = StringBuilder()
+            engine.sendUserPrompt(userText, 300).collect { token ->
+                resultBuilder.append(token)
+            }
+            stripThinkTags(resultBuilder.toString().trim()).ifEmpty { null }
+        } catch (e: Exception) {
+            XLog.w(TAG, "Local model vision failed, fallback to HTTP", e)
+            null
+        }
+    }
+
+    /**
+     * 使用本地 LlamaEngine 分析（纯文本）
+     * @return 回复文本，失败返回 null（回退到 HTTP）
+     */
+    private suspend fun callLocalModelTextOnly(userText: String): String? {
+        val engine = LlamaEngine.getInstance(application)
+        if (!engine.isModelLoaded) {
+            XLog.w(TAG, "Local model not ready for text analysis")
+            return null
+        }
+        return try {
+            engine.fullReset()
+            engine.setSystemPrompt("你是一个简洁有用的语音助手，用简短的语言回答问题。")
+            val resultBuilder = StringBuilder()
+            engine.sendUserPrompt(userText, 300).collect { token ->
+                resultBuilder.append(token)
+            }
+            stripThinkTags(resultBuilder.toString().trim()).ifEmpty { null }
+        } catch (e: Exception) {
+            XLog.w(TAG, "Local model text failed, fallback to HTTP", e)
+            null
+        }
+    }
+
+    /**
+     * 调用 LLM Vision API（带图片 + 文字）
+     * @return 回复文本，失败返回 null
+     */
+    private suspend fun callLlmVision(
+        systemPrompt: String,
+        userText: String,
+        frameJpegBytes: ByteArray
+    ): String? {
+        val baseUrl = KVUtils.getLlmBaseUrl().trimEnd('/')
+        val apiKey = KVUtils.getLlmApiKey()
+        var modelName = KVUtils.getLlmModelName()
+
+        if (baseUrl.isEmpty() || apiKey.isEmpty()) {
+            showResultMessage("助手: 请先配置 LLM（设置 > 模型 > LLM 配置）")
+            return null
+        }
+        if (modelName.isEmpty()) modelName = "gpt-4o"
+
+        val base64Image = Base64.encodeToString(frameJpegBytes, Base64.NO_WRAP)
+
+        val url = buildApiUrl(baseUrl)
+        XLog.i(TAG, "callLlmVision: model=$modelName, url=$url, imageSize=${frameJpegBytes.size / 1024}KB")
+
+        val messages = listOf(
+            mapOf("role" to "system", "content" to systemPrompt),
+            mapOf(
+                "role" to "user",
+                "content" to listOf(
+                    mapOf("type" to "text", "text" to userText),
+                    mapOf(
+                        "type" to "image_url",
+                        "image_url" to mapOf("url" to "data:image/jpeg;base64,$base64Image")
+                    )
+                )
+            )
+        )
+
+        return withContext(Dispatchers.IO) {
+            executeLlmRequest(url, apiKey, modelName, messages)
+        }
+    }
+
+    /**
+     * 调用 LLM 纯文本 API（无图片）
+     * @return 回复文本，失败返回 null
+     */
+    private suspend fun callLlmTextOnly(userText: String): String? {
+        val baseUrl = KVUtils.getLlmBaseUrl().trimEnd('/')
+        val apiKey = KVUtils.getLlmApiKey()
+        var modelName = KVUtils.getLlmModelName()
+
+        if (baseUrl.isEmpty() || apiKey.isEmpty()) {
+            showResultMessage("助手: 请先配置 LLM（设置 > 模型 > LLM 配置）")
+            return null
+        }
+        if (modelName.isEmpty()) modelName = "gpt-4o"
+
+        val url = buildApiUrl(baseUrl)
+        XLog.i(TAG, "callLlmTextOnly: model=$modelName, url=$url")
+
+        val messages = listOf(
+            mapOf("role" to "system", "content" to "你是一个简洁有用的语音助手，用简短的语言回答问题。"),
+            mapOf("role" to "user", "content" to userText)
+        )
+
+        return withContext(Dispatchers.IO) {
+            executeLlmRequest(url, apiKey, modelName, messages)
+        }
+    }
+
+    /**
+     * 执行 LLM HTTP 请求（统一入口）
+     * @return 回复文本，失败返回 null
+     */
+    private fun executeLlmRequest(
+        url: String,
+        apiKey: String,
+        modelName: String,
+        messages: List<Map<String, Any>>
+    ): String? {
+        val bodyMap = mapOf(
+            "model" to modelName,
+            "messages" to messages,
+            "max_tokens" to 300,
+            "temperature" to 0.7
+        )
+
+        val json = com.google.gson.Gson().toJson(bodyMap)
+        val client = okhttp3.OkHttpClient.Builder()
+            .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val request = okhttp3.Request.Builder()
+            .url(url)
+            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Content-Type", "application/json")
+            .post(json.toRequestBody("application/json".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string()
+            if (responseBody == null) {
+                showResultMessage("助手: 请求失败，无响应")
+                return null
+            }
+            if (!response.isSuccessful) {
+                XLog.e(TAG, "LLM API error: HTTP ${response.code}, body=$responseBody")
+                showResultMessage("助手: 请求失败(HTTP ${response.code})")
+                return null
+            }
+            val jsonResp = org.json.JSONObject(responseBody)
+            val content = jsonResp.getJSONArray("choices")
+                .optJSONObject(0)?.getJSONObject("message")
+                ?.optString("content", "") ?: "无回复"
+            return stripThinkTags(content.trim())
+        }
+    }
+
+    /**
+     * 智能拼接 API URL
+     */
+    private fun buildApiUrl(baseUrl: String): String {
+        return when {
+            baseUrl.endsWith("/v1") -> "$baseUrl/chat/completions"
+            baseUrl.contains("/v1/") -> "$baseUrl/chat/completions"
+            else -> "$baseUrl/v1/chat/completions"
+        }
+    }
+
+    /**
+     * 使用 TTS 语音播报回复内容
+     */
+    /**
+     * 过滤 <think >...</think > 标签及其内容（某些模型如 DeepSeek 会输出思考过程）
+     * 支持流式中间态：当 </think > 尚未到达时，截断未闭合的 <think 块
+     */
+    private fun stripThinkTags(text: String): String {
+        var result = text
+        while (true) {
+            val start = result.indexOf("<think")
+            if (start < 0) break
+            val end = result.indexOf("</think", start)
+            if (end >= 0) {
+                val close = result.indexOf(">", end + 7)
+                result = if (close >= 0) result.removeRange(start, close + 1) else result.removeRange(start, result.length)
+            } else {
+                // 流式中间态：</think > 尚未到达，截断 <think 及其之后的所有内容
+                result = result.removeRange(start, result.length)
+                break
+            }
+        }
+        return result.trim()
+    }
+
+    private fun speakReply(text: String) {
+        try {
+            if (ttsManager == null) {
+                ttsManager = com.aicontrol.android.floating.voice.TtsManager(application)
+            }
+            ttsManager?.speak(stripMarkdownForTts(text))
+        } catch (e: Exception) {
+            XLog.e(TAG, "TTS speak failed", e)
+        }
+    }
+
+    private fun stripMarkdownForTts(text: String): String {
+        return text
+            .replace(Regex("```[\\s\\S]*?```"), "")
+            .replace(Regex("`[^`]+`"), "")
+            .replace(Regex("!\\[([^]]*)]\\([^)]*\\)"), "$1")
+            .replace(Regex("\\[([^]]*)]\\([^)]*\\)"), "$1")
+            .replace(Regex("\\*\\*([^*]+)\\*\\*|__([^_]+)__"), "$1$2")
+            .replace(Regex("(?<!\\*)\\*([^*]+)\\*(?!\\*)|(?<!_)_([^_]+)_(?!_)"), "$1$2")
+            .replace(Regex("~~([^~]+)~~"), "$1")
+            .replace(Regex("^#{1,6}\\s+"), "")
+            .replace(Regex("(?m)^>\\s+"), "")
+            .replace(Regex("(?m)^[-*+]\\s+"), "")
+            .replace(Regex("(?m)^\\d+\\.\\s+"), "")
+            .replace(Regex("^---+$"), "")
+            .replace(Regex("^\\*\\*\\*+$"), "")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+    }
+
+    override fun onResume() {
+        super.onResume()
+    }
+
+    override fun onPause() {
+        super.onPause()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isMonitoring) {
+            stopMonitoring()
+        }
+        VoiceInteractionFloatWindow.clearMonitorResults()
+        VoiceInteractionFloatWindow.dismiss()
+        ttsManager?.shutdown()
+        ttsManager = null
+        cameraFramePusher?.stop()
+        cameraFramePusher = null
+        VisionFrameBuffer.stop()
+    }
+}

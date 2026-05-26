@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#121418">
+
+    <com.aicontrol.android.widget.CommonToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="20pt">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Enable toggle -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingBottom="12pt">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/webrtc_enable"
+                    android:textColor="#E0E0E0"
+                    android:textSize="14pt" />
+
+                <Switch
+                    android:id="@+id/switchWebRTCEnabled"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/webrtc_direct_config_tip"
+                android:textColor="#888888"
+                android:textSize="11pt"
+                android:paddingBottom="16pt" />
+
+            <!-- Chat Mode Selection -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="聊天模式"
+                android:textColor="#CCCCCC"
+                android:textSize="12pt"
+                android:paddingBottom="4pt" />
+
+            <Spinner
+                android:id="@+id/spinnerChatMode"
+                android:layout_width="match_parent"
+                android:layout_height="42pt"
+                android:background="@android:drawable/spinner_background"
+                android:paddingHorizontal="8pt"
+                android:layout_marginBottom="4pt" />
+
+            <!-- VoiceLLM mode tip -->
+            <TextView
+                android:id="@+id/tvVoiceLlmTip"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="VoiceLLM: 通过CyberVerse信令通道收发消息，支持流式文本和语音转录，无需额外配置"
+                android:textColor="#666666"
+                android:textSize="10pt"
+                android:paddingBottom="16pt" />
+
+            <!-- OpenClaw mode tip -->
+            <TextView
+                android:id="@+id/tvOpenClawTip"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="OpenClaw: 通过独立OpenClaw服务进行LLM对话，回复会桥接到CyberVerse驱动数字人"
+                android:textColor="#FF8800"
+                android:textSize="10pt"
+                android:paddingBottom="8pt"
+                android:visibility="gone" />
+
+            <!-- OpenClaw WebSocket URL (only shown in OpenClaw mode) -->
+            <LinearLayout
+                android:id="@+id/llOpenClawConfig"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="OpenClaw WebSocket 地址"
+                    android:textColor="#CCCCCC"
+                    android:textSize="12pt"
+                    android:paddingBottom="4pt" />
+
+                <EditText
+                    android:id="@+id/etOpenClawWsUrl"
+                    android:layout_width="match_parent"
+                    android:layout_height="42pt"
+                    android:background="@android:drawable/edit_text"
+                    android:hint="ws://7110f985.r21.cpolar.top"
+                    android:textColorHint="#666666"
+                    android:textColor="#FFFFFF"
+                    android:inputType="textUri"
+                    android:singleLine="true"
+                    android:paddingHorizontal="12pt"
+                    android:layout_marginBottom="16pt" />
+            </LinearLayout>
+
+            <!-- WebSocket Base URL -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/webrtc_ws_base_label"
+                android:textColor="#CCCCCC"
+                android:textSize="12pt"
+                android:paddingBottom="4pt" />
+
+            <EditText
+                android:id="@+id/etWebRTCWsBase"
+                android:layout_width="match_parent"
+                android:layout_height="42pt"
+                android:background="@android:drawable/edit_text"
+                android:hint="@string/webrtc_ws_base_hint"
+                android:textColorHint="#666666"
+                android:textColor="#FFFFFF"
+                android:inputType="textUri"
+                android:singleLine="true"
+                android:paddingHorizontal="12pt"
+                android:layout_marginBottom="16pt" />
+
+            <!-- API Base URL -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/webrtc_api_base_label"
+                android:textColor="#CCCCCC"
+                android:textSize="12pt"
+                android:paddingBottom="4pt" />
+
+            <EditText
+                android:id="@+id/etWebRTCApiBase"
+                android:layout_width="match_parent"
+                android:layout_height="42pt"
+                android:background="@android:drawable/edit_text"
+                android:hint="@string/webrtc_api_base_hint"
+                android:textColorHint="#666666"
+                android:textColor="#FFFFFF"
+                android:inputType="textUri"
+                android:singleLine="true"
+                android:paddingHorizontal="12pt"
+                android:layout_marginBottom="16pt" />
+
+            <!-- Character ID -->
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/webrtc_character_id_label"
+                android:textColor="#CCCCCC"
+                android:textSize="12pt"
+                android:paddingBottom="4pt" />
+
+            <EditText
+                android:id="@+id/etWebRTCCharacterId"
+                android:layout_width="match_parent"
+                android:layout_height="42pt"
+                android:background="@android:drawable/edit_text"
+                android:hint="@string/webrtc_character_id_hint"
+                android:textColorHint="#666666"
+                android:textColor="#FFFFFF"
+                android:inputType="text"
+                android:singleLine="true"
+                android:paddingHorizontal="12pt"
+                android:layout_marginBottom="24pt" />
+
+            <!-- Action buttons -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="end">
+
+                <Button
+                    android:id="@+id/btnClearWebRTC"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40pt"
+                    android:text="@string/cloud_chat_config_clear"
+                    android:textColor="#CCCCCC"
+                    android:backgroundTint="#333333"
+                    android:layout_marginEnd="12pt" />
+
+                <Button
+                    android:id="@+id/btnSaveWebRTC"
+                    android:layout_width="wrap_content"
+                    android:layout_height="40pt"
+                    android:text="@string/common_save"
+                    android:textColor="#FFFFFF"
+                    android:backgroundTint="#2196F3" />
+            </LinearLayout>
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>
