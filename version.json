@@ -1,7 +1,7 @@
 {
-  "versionCode": 69,
-  "versionName": "v0.0.69",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.69/AiControl-latest.apk",
-  "releaseNotes": "设置界面新增小车IP地址和端口配置",
+  "versionCode": 70,
+  "versionName": "v0.0.70",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.70/AiControl-latest.apk",
+  "releaseNotes": "语音改为按住说话松开识别+修复TTS播报+模糊匹配关键词",
   "releaseDate": "2026-05-26"
 }
