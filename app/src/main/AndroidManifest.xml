@@ -227,6 +227,11 @@
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
+        <activity
+            android:name=".ui.car.CarControlActivity"
+            android:exported="false"
+            android:screenOrientation="landscape" />
+
     </application>
 
 </manifest>

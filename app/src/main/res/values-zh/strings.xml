@@ -250,6 +250,7 @@
     <string name="home_btn_chat">对话</string>
     <string name="home_btn_skills">技能</string>
     <string name="home_btn_timeline">历史</string>
+    <string name="home_btn_car">小车控制</string>
 
     <!-- 对话 -->
     <string name="chat_title">AI 对话</string>

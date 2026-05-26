@@ -49,7 +49,7 @@ class AppUpdater(private val context: Context) {
         private const val TAG = "AppUpdater"
 
         const val GITHUB_OWNER = "easyeye163"
-        const val GITHUB_REPO = "AiControl-vision"
+        const val GITHUB_REPO = "aicontrol"
         const val GITHUB_BRANCH = "main"
 
         // Fixed path for version info on GitHub
