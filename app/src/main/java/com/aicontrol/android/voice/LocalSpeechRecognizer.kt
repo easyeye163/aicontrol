@@ -66,6 +66,10 @@ class LocalSpeechRecognizer(private val context: Context) {
 
         override fun onRmsChanged(rmsdB: Float) {
             // 音量变化，可用于显示录音状态
+            // 仅在音量较大时记录（避免刷屏）
+            if (rmsdB > 2.0f) {
+                Log.d(TAG, "RMS: %.1f".format(rmsdB))
+            }
         }
 
         override fun onBufferReceived(buffer: ByteArray?) {}
@@ -116,7 +120,11 @@ class LocalSpeechRecognizer(private val context: Context) {
             retryCount = 0
 
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            // 打印完整的 results Bundle 用于调试
+            Log.i(TAG, "onResults called. bundle=$results")
+            Log.i(TAG, "onResults matches=$matches")
             if (matches.isNullOrEmpty()) {
+                Log.w(TAG, "onResults: matches is null or empty!")
                 listener?.onError("未识别到语音内容")
                 return
             }
@@ -126,11 +134,14 @@ class LocalSpeechRecognizer(private val context: Context) {
         }
 
         override fun onPartialResults(partialResults: Bundle?) {
+            Log.d(TAG, "onPartialResults called. bundle=$partialResults")
             val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             if (!matches.isNullOrEmpty()) {
                 val text = matches[0]
                 Log.d(TAG, "Partial: $text")
                 listener?.onPartialResult(text)
+            } else {
+                Log.d(TAG, "onPartialResults: no matches")
             }
         }
 
@@ -140,6 +151,9 @@ class LocalSpeechRecognizer(private val context: Context) {
     /**
      * 开始语音识别（对外接口）
      * 如果当前正在识别，先取消再重新开始
+     *
+     * 重要：每次 startListening 都先 cancel 再 start，
+     * 因为某些设备/ROM 在上一轮 onResults/onError 后不 cancel 就直接 start 会导致识别器无响应
      */
     fun startListening() {
         // 先检查设备是否支持语音识别
@@ -151,16 +165,14 @@ class LocalSpeechRecognizer(private val context: Context) {
         // 确保 SpeechRecognizer 实例已创建（复用，不每次新建）
         ensureRecognizer()
 
-        // 如果正在识别，先取消
-        if (isListening) {
-            Log.w(TAG, "Already listening, cancel first")
-            try {
-                speechRecognizer?.cancel()
-            } catch (e: Exception) {
-                Log.w(TAG, "cancel before restart error", e)
-            }
-            isListening = false
+        // 无论是否 isListening，每次都先 cancel，确保识别器处于干净状态
+        try {
+            speechRecognizer?.cancel()
+            Log.i(TAG, "Pre-cancel before startListening (was isListening=$isListening)")
+        } catch (e: Exception) {
+            Log.w(TAG, "pre-cancel error", e)
         }
+        isListening = false
 
         retryCount = 0
         internalStartListening()

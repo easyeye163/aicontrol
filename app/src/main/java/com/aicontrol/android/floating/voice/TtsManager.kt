@@ -85,6 +85,12 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
         }
         isReady = true
         Log.i(TAG, "TTS initialized (lang=$lang)")
+        // 如果在 TTS 初始化完成之前有文本排队等待播报，现在播报它
+        pendingText?.let { text ->
+            Log.i(TAG, "TTS now ready, speaking pending: $text")
+            pendingText = null
+            doSpeak(text)
+        }
     }
 
     /**

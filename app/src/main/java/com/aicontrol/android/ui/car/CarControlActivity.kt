@@ -13,8 +13,12 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.ImageView
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
@@ -55,6 +59,13 @@ class CarControlActivity : BaseActivity() {
     private lateinit var tvWifiStatus: TextView
     private lateinit var tvLastCmd: TextView
     private lateinit var tvSpeed: TextView
+    private lateinit var tvDebugLog: TextView
+    private lateinit var scrollDebugLog: ScrollView
+
+    /** 调试日志最大行数 */
+    private val maxDebugLines = 50
+    private val debugLogLines = mutableListOf<String>()
+    private val timeFormat = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
 
     private val handler = Handler(Looper.getMainLooper())
     private var isConnected = false
@@ -132,6 +143,7 @@ class CarControlActivity : BaseActivity() {
         findViewById<TextView>(R.id.tvIpAddress)?.text = "$carHost:$carPort"
 
         initViews()
+        initDebugPanel()
         initVoice()
     }
 
@@ -173,6 +185,8 @@ class CarControlActivity : BaseActivity() {
         tvWifiStatus = findViewById(R.id.tvWifiStatus)
         tvLastCmd = findViewById(R.id.tvLastCmd)
         tvSpeed = findViewById(R.id.tvSpeed)
+        tvDebugLog = findViewById(R.id.tvDebugLog)
+        scrollDebugLog = findViewById(R.id.scrollDebugLog)
 
         // 设置按钮
         findViewById<View>(R.id.btnSettings)?.setOnClickListener {
@@ -273,6 +287,9 @@ class CarControlActivity : BaseActivity() {
         isContinuousMode = true
         updateVoiceButton(true)
         tvLastCmd.text = "语音已开启"
+        // 开启调试面板
+        scrollDebugLog.visibility = View.VISIBLE
+        appendDebugLog("[系统] 持续识别模式开启")
         XLog.i(TAG, "Continuous voice mode ON")
         // 延迟 300ms 开始，让用户看到按钮变红
         handler.postDelayed({
@@ -294,12 +311,14 @@ class CarControlActivity : BaseActivity() {
         }
         updateVoiceButton(false)
         tvLastCmd.text = "语音已关闭"
+        appendDebugLog("[系统] 持续识别模式关闭")
         XLog.i(TAG, "Continuous voice mode OFF")
     }
 
     /**
      * 调度重新开始监听
      * 关键：等 TTS 播完后再重启识别器，否则识别器抢占音频焦点导致 TTS 被中断
+     * 每次重启前先 cancel 旧识别器，避免某些设备上识别器状态异常
      */
     private fun scheduleRestartListening(delayMs: Long = 500L) {
         if (!isContinuousMode) return
@@ -308,6 +327,7 @@ class CarControlActivity : BaseActivity() {
             // 如果 TTS 正在播报，等它播完再启动识别器（每 200ms 检查一次）
             if (ttsManager?.isSpeaking == true) {
                 tvLastCmd.text = "播报中，等待重启..."
+                appendDebugLog("[调度] TTS播报中，等待...")
                 handler.postDelayed(object : Runnable {
                     override fun run() {
                         if (!isContinuousMode || isRecording) return
@@ -316,15 +336,47 @@ class CarControlActivity : BaseActivity() {
                             handler.postDelayed(this, 200)
                             return
                         }
+                        appendDebugLog("[调度] TTS播报完毕，重启识别")
                         tvLastCmd.text = "继续聆听..."
                         startListening()
                     }
                 }, 200)
                 return@postDelayed
             }
+            appendDebugLog("[调度] 重启识别器")
             startListening()
         }, delayMs)
     }
+
+    // ==================== 调试日志 ====================
+
+    private fun initDebugPanel() {
+        // 长按语音按钮可以切换调试面板显隐
+        scrollDebugLog.visibility = View.GONE
+    }
+
+    /**
+     * 追加一行调试日志到界面上的日志面板
+     * 同时输出到 logcat
+     */
+    private fun appendDebugLog(msg: String) {
+        val timeStr = timeFormat.format(Date())
+        val line = "[$timeStr] $msg"
+        XLog.i(TAG, "[DEBUG] $msg")
+        runOnUiThread {
+            debugLogLines.add(line)
+            if (debugLogLines.size > maxDebugLines) {
+                debugLogLines.removeAt(0)
+            }
+            tvDebugLog.text = debugLogLines.joinToString("\n")
+            // 自动滚动到底部
+            scrollDebugLog.post {
+                scrollDebugLog.fullScroll(View.FOCUS_DOWN)
+            }
+        }
+    }
+
+    // ==================== 语音控制（点击持续识别） ====================
 
     private fun initVoice() {
         ttsManager = TtsManager(this)
@@ -389,6 +441,7 @@ class CarControlActivity : BaseActivity() {
                         isRecording = true
                         updateVoiceButton(true)
                         tvLastCmd.text = "聆听中(本地)..."
+                        appendDebugLog("[识别] 录音开始")
                     }
                 }
 
@@ -396,14 +449,17 @@ class CarControlActivity : BaseActivity() {
                     runOnUiThread {
                         isRecording = false
                         tvLastCmd.text = "识别中..."
+                        appendDebugLog("[识别] 录音结束，正在识别...")
                     }
                 }
 
                 override fun onResult(text: String) {
                     runOnUiThread {
                         isRecording = false
+                        appendDebugLog("[结果] 识别成功: \"$text\"")
                         processVoiceCommand(text)
                         if (isContinuousMode) {
+                            appendDebugLog("[调度] 等待500ms后重启识别")
                             scheduleRestartListening()
                         }
                     }
@@ -413,6 +469,7 @@ class CarControlActivity : BaseActivity() {
                     if (text.isNullOrBlank()) return
                     runOnUiThread {
                         tvLastCmd.text = "听: $text"
+                        appendDebugLog("[中间] $text")
                     }
                 }
 
@@ -420,8 +477,10 @@ class CarControlActivity : BaseActivity() {
                     XLog.w(TAG, "Local STT error: $message")
                     runOnUiThread {
                         isRecording = false
+                        appendDebugLog("[错误] $message")
                         if (isContinuousMode) {
                             tvLastCmd.text = "$message，重试中..."
+                            appendDebugLog("[调度] 等待1s后重启识别")
                             scheduleRestartListening(1000)
                         } else {
                             updateVoiceButton(false)
@@ -603,10 +662,12 @@ class CarControlActivity : BaseActivity() {
         if (bestAction != null) {
             // 匹配成功：显示识别结果和匹配的关键词
             tvLastCmd.text = "\"$trimmed\" -> $bestKeyword(${"%.0f".format(bestScore * 100)}%)"
+            appendDebugLog("[匹配] \"$trimmed\" -> $bestKeyword(${"%.0f".format(bestScore * 100)}%)")
             bestAction.invoke()
         } else {
             // 未匹配：显示识别原文和各得分，方便调试
             tvLastCmd.text = "未匹配: \"$trimmed\" [$scoreInfo]"
+            appendDebugLog("[未匹配] \"$trimmed\" 得分: $scoreInfo")
             XLog.i(TAG, "No keyword matched. Scores: $scoreInfo")
         }
     }
@@ -614,6 +675,7 @@ class CarControlActivity : BaseActivity() {
     // ==================== 指令执行 ====================
 
     private fun speakTts(text: String) {
+        appendDebugLog("[TTS] 播报: \"$text\" (ready=${ttsManager?.isReady})")
         ttsManager?.speak(text)
     }
 
