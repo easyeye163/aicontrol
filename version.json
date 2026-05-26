@@ -1,7 +1,7 @@
 {
-  "versionCode": 78,
-  "versionName": "v0.0.78",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.78/AiControl-latest.apk",
-  "releaseNotes": "本地识别无网络时直接提示，不再卡死",
+  "versionCode": 79,
+  "versionName": "v0.0.79",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.79/AiControl-latest.apk",
+  "releaseNotes": "自定义静音检测，解决识别器不结束录音的问题",
   "releaseDate": "2026-05-27"
 }

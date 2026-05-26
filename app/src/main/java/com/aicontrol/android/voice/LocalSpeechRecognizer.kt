@@ -26,6 +26,11 @@ import java.util.Locale
  * - 移除 EXTRA_PROMPT（避免部分 ROM 弹窗干扰）
  * - 设置 EXTRA_CALLING_PACKAGE（部分国产 ROM 要求）
  * - 支持中间结果（onPartialResult）用于实时显示
+ *
+ * 重要（v0.0.79）：
+ * - 自定义静音检测：部分国产 ROM 不遵守 EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS，
+ *   onEndOfSpeech 永远不回调。通过 onRmsChanged 监测音量，持续静音超过阈值时间后
+ *   手动调 stopListening() 强制触发识别
  */
 class LocalSpeechRecognizer(private val context: Context) {
 
@@ -36,7 +41,15 @@ class LocalSpeechRecognizer(private val context: Context) {
         /** cancel() 后等待多久再 startListening()，某些设备需要延时才能正常重启 */
         private const val CANCEL_TO_START_DELAY_MS = 200L
         /** 识别超时：如果开始录音后 N 秒内没有任何结果/错误回调，强制重启 */
-        private const val RECOGNITION_TIMEOUT_MS = 12000L
+        private const val RECOGNITION_TIMEOUT_MS = 15000L
+
+        // ---- 自定义静音检测参数 ----
+        /** 静音阈值（RMS dB），低于此值视为静音 */
+        private const val SILENCE_THRESHOLD_DB = 1.5f
+        /** 持续静音多久（毫秒）后判定语音结束 */
+        private const val SILENCE_DURATION_MS = 2000L
+        /** 检查静音的间隔 */
+        private const val SILENCE_CHECK_INTERVAL_MS = 300L
     }
 
     interface Listener {
@@ -58,8 +71,20 @@ class LocalSpeechRecognizer(private val context: Context) {
     private var isListening = false
     private var retryCount = 0
     private val handler = Handler(Looper.getMainLooper())
+
+    // ---- 超时保护 ----
     /** 识别超时 Runnable，防止识别器挂起导致持续识别卡死 */
     private var recognitionTimeoutRunnable: Runnable? = null
+
+    // ---- 自定义静音检测 ----
+    /** 最近一次 RMS 值 */
+    private var lastRms = 0f
+    /** 静音开始时间（第一次 RMS 低于阈值的时间），0 表示正在说话 */
+    private var silenceStartTime = 0L
+    /** 静音检测定时器 */
+    private var silenceCheckRunnable: Runnable? = null
+    /** 是否已经通过手动 stopListening 触发过（防止重复触发） */
+    private var manualStopTriggered = false
 
     private val recognitionListener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {
@@ -69,37 +94,40 @@ class LocalSpeechRecognizer(private val context: Context) {
         override fun onBeginningOfSpeech() {
             Log.i(TAG, "Beginning of speech")
             isListening = true
+            manualStopTriggered = false
+            silenceStartTime = 0L
+            lastRms = 0f
             listener?.onRecordingStarted()
             // 启动识别超时计时器
-            cancelRecognitionTimeout()
-            recognitionTimeoutRunnable = Runnable {
-                Log.w(TAG, "Recognition timeout after ${RECOGNITION_TIMEOUT_MS}ms, forcing restart")
-                isListening = false
-                // 超时当作错误处理，通知上层重启
-                listener?.onError("识别超时(${RECOGNITION_TIMEOUT_MS / 1000}秒无响应)")
-            }
-            handler.postDelayed(recognitionTimeoutRunnable!!, RECOGNITION_TIMEOUT_MS)
+            startRecognitionTimeout()
+            // 启动自定义静音检测
+            startSilenceDetection()
         }
 
         override fun onRmsChanged(rmsdB: Float) {
-            // 音量变化，可用于显示录音状态
-            // 仅在音量较大时记录（避免刷屏）
-            if (rmsdB > 2.0f) {
-                Log.d(TAG, "RMS: %.1f".format(rmsdB))
+            lastRms = rmsdB
+            // 重置静音计时器：只要检测到声音就重置
+            if (rmsdB >= SILENCE_THRESHOLD_DB) {
+                if (silenceStartTime > 0) {
+                    Log.d(TAG, "Sound detected (RMS=%.1f), reset silence timer".format(rmsdB))
+                    silenceStartTime = 0L
+                }
             }
         }
 
         override fun onBufferReceived(buffer: ByteArray?) {}
 
         override fun onEndOfSpeech() {
-            Log.i(TAG, "End of speech")
+            Log.i(TAG, "End of speech (from system)")
             isListening = false
+            stopSilenceDetection()
             cancelRecognitionTimeout()
             listener?.onTranscribing()
         }
 
         override fun onError(error: Int) {
             isListening = false
+            stopSilenceDetection()
             cancelRecognitionTimeout()
 
             val msg = when (error) {
@@ -137,12 +165,11 @@ class LocalSpeechRecognizer(private val context: Context) {
         override fun onResults(results: Bundle?) {
             isListening = false
             retryCount = 0
+            stopSilenceDetection()
             cancelRecognitionTimeout()
 
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-            // 打印完整的 results Bundle 用于调试
-            Log.i(TAG, "onResults called. bundle=$results")
-            Log.i(TAG, "onResults matches=$matches")
+            Log.i(TAG, "onResults called. matches=$matches")
             if (matches.isNullOrEmpty()) {
                 Log.w(TAG, "onResults: matches is null or empty!")
                 listener?.onError("未识别到语音内容")
@@ -154,26 +181,105 @@ class LocalSpeechRecognizer(private val context: Context) {
         }
 
         override fun onPartialResults(partialResults: Bundle?) {
-            Log.d(TAG, "onPartialResults called. bundle=$partialResults")
             val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             if (!matches.isNullOrEmpty()) {
                 val text = matches[0]
                 Log.d(TAG, "Partial: $text")
                 listener?.onPartialResult(text)
-            } else {
-                Log.d(TAG, "onPartialResults: no matches")
             }
         }
 
         override fun onEvent(eventType: Int, params: Bundle?) {}
     }
 
+    // ==================== 静音检测 ====================
+
+    /**
+     * 启动自定义静音检测定时器
+     * 每 300ms 检查一次：如果持续静音超过 2 秒，手动 stopListening 触发识别
+     */
+    private fun startSilenceDetection() {
+        stopSilenceDetection()
+        silenceCheckRunnable = object : Runnable {
+            override fun run() {
+                if (!isListening || manualStopTriggered) return
+
+                val now = System.currentTimeMillis()
+
+                if (lastRms < SILENCE_THRESHOLD_DB) {
+                    // 当前是静音
+                    if (silenceStartTime == 0L) {
+                        // 刚进入静音
+                        silenceStartTime = now
+                        Log.d(TAG, "Silence started (RMS=%.1f)".format(lastRms))
+                    } else {
+                        val silenceDuration = now - silenceStartTime
+                        if (silenceDuration >= SILENCE_DURATION_MS) {
+                            // 持续静音超时，手动触发停止
+                            Log.i(TAG, "Silence for ${silenceDuration}ms, manually stopping (RMS=%.1f)".format(lastRms))
+                            manualStopTriggered = true
+                            try {
+                                speechRecognizer?.stopListening()
+                                Log.i(TAG, "Manual stopListening sent")
+                            } catch (e: Exception) {
+                                Log.w(TAG, "Manual stopListening error", e)
+                                isListening = false
+                                manualStopTriggered = false
+                                listener?.onError("手动停止录音失败")
+                            }
+                            return
+                        }
+                    }
+                } else {
+                    // 有声音，重置静音计时
+                    if (silenceStartTime > 0) {
+                        silenceStartTime = 0L
+                    }
+                }
+
+                // 继续检查
+                handler.postDelayed(this, SILENCE_CHECK_INTERVAL_MS)
+            }
+        }
+        // 延迟 500ms 开始检查（给 onBeginningOfSpeech 一些时间）
+        handler.postDelayed(silenceCheckRunnable!!, 500L)
+    }
+
+    /**
+     * 停止静音检测定时器
+     */
+    private fun stopSilenceDetection() {
+        silenceCheckRunnable?.let {
+            handler.removeCallbacks(it)
+        }
+        silenceCheckRunnable = null
+        silenceStartTime = 0L
+    }
+
+    // ==================== 超时保护 ====================
+
+    private fun startRecognitionTimeout() {
+        cancelRecognitionTimeout()
+        recognitionTimeoutRunnable = Runnable {
+            Log.w(TAG, "Recognition timeout after ${RECOGNITION_TIMEOUT_MS}ms, forcing restart")
+            isListening = false
+            manualStopTriggered = false
+            listener?.onError("识别超时(${RECOGNITION_TIMEOUT_MS / 1000}秒无响应)")
+        }
+        handler.postDelayed(recognitionTimeoutRunnable!!, RECOGNITION_TIMEOUT_MS)
+    }
+
+    private fun cancelRecognitionTimeout() {
+        recognitionTimeoutRunnable?.let {
+            handler.removeCallbacks(it)
+        }
+        recognitionTimeoutRunnable = null
+    }
+
+    // ==================== 对外接口 ====================
+
     /**
      * 开始语音识别（对外接口）
-     *
-     * 关键：cancel() 后必须延时 200ms 再 startListening()，
-     * 否则某些设备/ROM 上识别器会静默无响应（onBeginningOfSpeech 正常回调，
-     * 但之后 onEndOfSpeech/onResults/onError 全部不回调）
      *
      * 如果当前无互联网，直接报错提示，避免启动后卡死在"聆听中"状态
      */
@@ -197,6 +303,7 @@ class LocalSpeechRecognizer(private val context: Context) {
         val needDelay = speechRecognizer != null // 非首次启动需要 cancel+延时
 
         // cancel 旧会话
+        stopSilenceDetection()
         try {
             speechRecognizer?.cancel()
             Log.i(TAG, "Pre-cancel before startListening (was isListening=$isListening)")
@@ -205,6 +312,7 @@ class LocalSpeechRecognizer(private val context: Context) {
         }
         isListening = false
         retryCount = 0
+        manualStopTriggered = false
 
         if (needDelay) {
             // 非首次启动：cancel 后延时再 start，避免识别器静默无响应
@@ -226,7 +334,7 @@ class LocalSpeechRecognizer(private val context: Context) {
     private fun hasInternet(): Boolean {
         try {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-                ?: return true // 无法检测时默认允许
+                ?: return true
             val network = cm.activeNetwork ?: return false
             val caps = cm.getNetworkCapabilities(network) ?: return false
             return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -252,7 +360,7 @@ class LocalSpeechRecognizer(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
             // 不设置 EXTRA_PROMPT，避免部分 ROM 弹出对话框干扰
-            // 设置语音输入结束的静音检测时长（毫秒），用于持续识别
+            // 静音检测参数（部分 ROM 可能不遵守，所以有自定义静音检测兜底）
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 200L)
@@ -273,6 +381,7 @@ class LocalSpeechRecognizer(private val context: Context) {
      */
     fun stopListening() {
         if (!isListening) return
+        stopSilenceDetection()
         try {
             speechRecognizer?.stopListening()
             Log.i(TAG, "stopListening called")
@@ -286,6 +395,7 @@ class LocalSpeechRecognizer(private val context: Context) {
      * 取消语音识别（不触发 onResults）
      */
     fun cancel() {
+        stopSilenceDetection()
         cancelRecognitionTimeout()
         try {
             speechRecognizer?.cancel()
@@ -294,16 +404,7 @@ class LocalSpeechRecognizer(private val context: Context) {
         }
         isListening = false
         retryCount = 0
-    }
-
-    /**
-     * 取消识别超时计时器
-     */
-    private fun cancelRecognitionTimeout() {
-        recognitionTimeoutRunnable?.let {
-            handler.removeCallbacks(it)
-        }
-        recognitionTimeoutRunnable = null
+        manualStopTriggered = false
     }
 
     /**
@@ -326,6 +427,7 @@ class LocalSpeechRecognizer(private val context: Context) {
      * 释放资源（Activity onDestroy 时调用）
      */
     fun destroy() {
+        stopSilenceDetection()
         cancelRecognitionTimeout()
         handler.removeCallbacksAndMessages(null)
         try {
@@ -337,5 +439,6 @@ class LocalSpeechRecognizer(private val context: Context) {
         speechRecognizer = null
         isListening = false
         retryCount = 0
+        manualStopTriggered = false
     }
 }
