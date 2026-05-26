@@ -1,26 +1,23 @@
 package com.aicontrol.android.ui.car
 
-import android.content.Context
+import android.content.pm.ActivityInfo
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.MotionEvent
 import android.view.View
-import android.view.Window
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.ImageView
-import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.lifecycle.lifecycleScope
 import com.aicontrol.android.R
 import com.aicontrol.android.base.BaseActivity
 import com.aicontrol.android.widget.CommonToolbar
+import com.aicontrol.android.widget.SingleAxisJoystickView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -30,7 +27,8 @@ import java.net.URL
 
 /**
  * 小车控制界面 - 横屏模式
- * 连接到小车 WiFi AP (192.168.4.1) 后通过 HTTP 控制方向和速度
+ * 左摇杆控制前后，右摇杆控制左右转向，中间3D停止按钮
+ * 自动 ping 192.168.4.1 检测连接状态
  */
 class CarControlActivity : BaseActivity() {
 
@@ -39,18 +37,30 @@ class CarControlActivity : BaseActivity() {
         private const val CAR_HOST = "192.168.4.1"
         private const val CAR_PORT = 80
         private const val PING_INTERVAL_MS = 3000L
+        private const val SEND_INTERVAL_MS = 100L  // 连续发送间隔100ms
     }
 
     private lateinit var ivWifiStatus: ImageView
     private lateinit var tvWifiStatus: TextView
     private lateinit var tvLastCmd: TextView
     private lateinit var tvSpeed: TextView
-    private lateinit var speedBar: SeekBar
 
     private val handler = Handler(Looper.getMainLooper())
     private var isConnected = false
-    private var currentSpeed = 50
 
+    // 当前摇杆状态
+    private var verticalPercent = 0f   // -1(前) ~ 0(中) ~ 1(后)
+    private var horizontalPercent = 0f  // -1(左) ~ 0(中) ~ 1(右)
+
+    // 连续发送定时器
+    private val sendRunnable = object : Runnable {
+        override fun run() {
+            sendJoystickCommand()
+            handler.postDelayed(this, SEND_INTERVAL_MS)
+        }
+    }
+
+    // Ping 定时器
     private val pingRunnable = object : Runnable {
         override fun run() {
             checkConnection()
@@ -62,17 +72,17 @@ class CarControlActivity : BaseActivity() {
         super.onCreate(savedInstanceState)
 
         // 强制横屏
-        requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
 
         // 全屏沉浸式
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = (
-            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN
-                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                    or android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+            View.SYSTEM_UI_FLAG_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
             )
 
         // 保持屏幕常亮
@@ -90,86 +100,140 @@ class CarControlActivity : BaseActivity() {
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(pingRunnable)
+        handler.removeCallbacks(sendRunnable)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // 退出时发送停止
+        sendCommand("stop")
     }
 
     private fun initViews() {
-        findViewById<CommonToolbar>(R.id.toolbar).apply {
-            setTitle("Car Control")
-            showBackButton()
-        }
-
         ivWifiStatus = findViewById(R.id.ivWifiStatus)
         tvWifiStatus = findViewById(R.id.tvWifiStatus)
         tvLastCmd = findViewById(R.id.tvLastCmd)
         tvSpeed = findViewById(R.id.tvSpeed)
-        speedBar = findViewById(R.id.speedBar)
 
-        // 速度滑块
-        speedBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                currentSpeed = progress.coerceIn(10, 100)
-                tvSpeed.text = "$currentSpeed%"
+        // 左摇杆 — 前后控制 (vertical)
+        val joystickVertical = findViewById<SingleAxisJoystickView>(R.id.joystickVertical)
+        joystickVertical.axis = SingleAxisJoystickView.Axis.VERTICAL
+        joystickVertical.onMove = { percent ->
+            verticalPercent = percent
+            updateSpeedDisplay()
+            // 开始连续发送
+            handler.removeCallbacks(sendRunnable)
+            if (Math.abs(verticalPercent) > 0.05f || Math.abs(horizontalPercent) > 0.05f) {
+                handler.post(sendRunnable)
+            } else if (Math.abs(horizontalPercent) <= 0.05f) {
+                sendCommand("stop")
             }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
-
-        // 方向按钮 — 按下发送指令，松开发送停止
-        setupDirectionButton(R.id.btnForward, "forw")
-        setupDirectionButton(R.id.btnBack, "back")
-        setupDirectionButton(R.id.btnLeft, "left")
-        setupDirectionButton(R.id.btnRight, "right")
-
-        // 停止按钮
-        findViewById<Button>(R.id.btnStop).setOnClickListener {
-            sendCommand("stop")
         }
-    }
+        joystickVertical.onRelease = {
+            verticalPercent = 0f
+            updateSpeedDisplay()
+            if (Math.abs(horizontalPercent) <= 0.05f) {
+                handler.removeCallbacks(sendRunnable)
+                sendCommand("stop")
+            }
+        }
 
-    /**
-     * 配置方向按钮：按下时持续发送方向指令，松开时发送停止
-     */
-    private fun setupDirectionButton(buttonId: Int, direction: String) {
-        val btn = findViewById<Button>(buttonId)
-        btn.setOnTouchListener { _, event ->
+        // 右摇杆 — 左右转向 (horizontal)
+        val joystickHorizontal = findViewById<SingleAxisJoystickView>(R.id.joystickHorizontal)
+        joystickHorizontal.axis = SingleAxisJoystickView.Axis.HORIZONTAL
+        joystickHorizontal.onMove = { percent ->
+            horizontalPercent = percent
+            updateSpeedDisplay()
+            handler.removeCallbacks(sendRunnable)
+            if (Math.abs(verticalPercent) > 0.05f || Math.abs(horizontalPercent) > 0.05f) {
+                handler.post(sendRunnable)
+            } else if (Math.abs(verticalPercent) <= 0.05f) {
+                sendCommand("stop")
+            }
+        }
+        joystickHorizontal.onRelease = {
+            horizontalPercent = 0f
+            updateSpeedDisplay()
+            if (Math.abs(verticalPercent) <= 0.05f) {
+                handler.removeCallbacks(sendRunnable)
+                sendCommand("stop")
+            }
+        }
+
+        // 中间停止按钮 — 长按或点击都发送停止
+        val btnStop = findViewById<Button>(R.id.btnStop)
+        btnStop.setOnTouchListener { _, event ->
             when (event.action) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                    sendCommand(direction)
-                    tvLastCmd.text = "$direction $currentSpeed%"
-                    true
-                }
-                android.view.MotionEvent.ACTION_UP,
-                android.view.MotionEvent.ACTION_CANCEL -> {
+                MotionEvent.ACTION_DOWN -> {
+                    verticalPercent = 0f
+                    horizontalPercent = 0f
+                    handler.removeCallbacks(sendRunnable)
                     sendCommand("stop")
                     tvLastCmd.text = "STOP"
+                    tvSpeed.text = "0%"
                     true
                 }
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> true
                 else -> false
             }
         }
     }
 
     /**
+     * 根据摇杆状态计算并发送控制指令
+     */
+    private fun sendJoystickCommand() {
+        val absV = Math.abs(verticalPercent)
+        val absH = Math.abs(horizontalPercent)
+
+        // 两个摇杆都在死区内 → 停止
+        if (absV <= 0.05f && absH <= 0.05f) {
+            handler.removeCallbacks(sendRunnable)
+            return
+        }
+
+        // 优先级：前后 > 左右（前后移动时忽略转向）
+        if (absV >= absH) {
+            val speed = (absV * 90 + 10).toInt()  // 映射到 10~100
+            val direction = if (verticalPercent < 0) "forw" else "back"
+            sendCommand("$direction", speed)
+            tvLastCmd.text = "$direction $speed%"
+        } else {
+            val speed = (absH * 90 + 10).toInt()
+            val direction = if (horizontalPercent < 0) "left" else "right"
+            sendCommand("$direction", speed)
+            tvLastCmd.text = "$direction $speed%"
+        }
+    }
+
+    private fun updateSpeedDisplay() {
+        val absV = Math.abs(verticalPercent)
+        val absH = Math.abs(horizontalPercent)
+        val displayPercent = ((Math.max(absV, absH)) * 90 + 10).toInt()
+        tvSpeed.text = "$displayPercent%"
+    }
+
+    /**
      * 发送控制指令到小车
      * HTTP GET: http://192.168.4.1/control/{direction}_{speed}
      */
-    private fun sendCommand(direction: String) {
-        val urlStr = "http://$CAR_HOST:$CAR_PORT/control/${direction}_${currentSpeed}"
-        tvLastCmd.text = "$direction $currentSpeed%"
+    private fun sendCommand(direction: String, speed: Int = 50) {
+        val urlStr = "http://$CAR_HOST:$CAR_PORT/control/${direction}_$speed"
 
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) {
                     val url = URL(urlStr)
                     val conn = url.openConnection() as HttpURLConnection
-                    conn.connectTimeout = 2000
-                    conn.readTimeout = 2000
+                    conn.connectTimeout = 1000
+                    conn.readTimeout = 1000
                     conn.requestMethod = "GET"
-                    conn.responseCode // 触发请求
+                    conn.responseCode
                     conn.disconnect()
                 }
-            } catch (e: Exception) {
-                // 静默失败，避免频繁 Toast 干扰操作
+            } catch (_: Exception) {
+                // 静默失败
             }
         }
     }
@@ -183,7 +247,7 @@ class CarControlActivity : BaseActivity() {
                 try {
                     val address = InetAddress.getByName(CAR_HOST)
                     address.isReachable(1500)
-                } catch (e: Exception) {
+                } catch (_: Exception) {
                     false
                 }
             }

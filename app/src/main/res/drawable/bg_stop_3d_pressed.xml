@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 按下状态：更暗更小 -->
+    <item>
+        <shape android:shape="oval">
+            <gradient
+                android:endColor="#7f1d1d"
+                android:gradientRadius="50%p"
+                android:startColor="#dc2626"
+                android:type="radial"
+                android:centerX="0.45"
+                android:centerY="0.4" />
+            <stroke
+                android:width="2dp"
+                android:color="#450a0a" />
+        </shape>
+    </item>
+
+</layer-list>

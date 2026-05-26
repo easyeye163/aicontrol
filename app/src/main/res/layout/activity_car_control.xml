@@ -1,181 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#1a1a2e"
-    android:orientation="horizontal"
-    android:padding="16pt">
+    android:background="#0f172a">
 
-    <!-- 左侧：控制面板 -->
+    <!-- WiFi 状态 — 顶部居中 -->
     <LinearLayout
-        android:layout_width="0dp"
-        android:layout_height="match_parent"
-        android:layout_weight="1"
-        android:orientation="vertical"
-        android:gravity="center">
-
-        <!-- 顶部工具栏 -->
-        <com.aicontrol.android.widget.CommonToolbar
-            android:id="@+id/toolbar"
-            android:layout_width="match_parent"
-            android:layout_height="48pt" />
-
-        <Space
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
-
-        <!-- 方向控制 3x3 网格 -->
-        <GridLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:columnCount="3"
-            android:rowCount="3"
-            android:useDefaultMargins="false">
-
-            <!-- 空位 -->
-            <Space android:layout_width="72pt" android:layout_height="72pt" />
-
-            <!-- 前进 -->
-            <Button
-                android:id="@+id/btnForward"
-                android:layout_width="72pt"
-                android:layout_height="72pt"
-                android:layout_column="1"
-                android:layout_row="0"
-                android:background="@drawable/bg_car_btn_forward"
-                android:text="UP"
-                android:textColor="@android:color/white"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <!-- 空位 -->
-            <Space android:layout_width="72pt" android:layout_height="72pt" />
-
-            <!-- 左转 -->
-            <Button
-                android:id="@+id/btnLeft"
-                android:layout_width="72pt"
-                android:layout_height="72pt"
-                android:layout_column="0"
-                android:layout_row="1"
-                android:background="@drawable/bg_car_btn_left"
-                android:text="LT"
-                android:textColor="@android:color/white"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <!-- 停止 -->
-            <Button
-                android:id="@+id/btnStop"
-                android:layout_width="72pt"
-                android:layout_height="72pt"
-                android:layout_column="1"
-                android:layout_row="1"
-                android:background="@drawable/bg_car_btn_stop"
-                android:text="STOP"
-                android:textColor="@android:color/white"
-                android:textSize="16sp"
-                android:textStyle="bold" />
-
-            <!-- 右转 -->
-            <Button
-                android:id="@+id/btnRight"
-                android:layout_width="72pt"
-                android:layout_height="72pt"
-                android:layout_column="2"
-                android:layout_row="1"
-                android:background="@drawable/bg_car_btn_right"
-                android:text="RT"
-                android:textColor="@android:color/white"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <!-- 空位 -->
-            <Space android:layout_width="72pt" android:layout_height="72pt" />
-
-            <!-- 后退 -->
-            <Button
-                android:id="@+id/btnBack"
-                android:layout_width="72pt"
-                android:layout_height="72pt"
-                android:layout_column="1"
-                android:layout_row="2"
-                android:background="@drawable/bg_car_btn_back"
-                android:text="DN"
-                android:textColor="@android:color/white"
-                android:textSize="18sp"
-                android:textStyle="bold" />
-
-            <!-- 空位 -->
-            <Space android:layout_width="72pt" android:layout_height="72pt" />
-
-        </GridLayout>
-
-        <Space
-            android:layout_width="match_parent"
-            android:layout_height="16pt" />
-
-        <!-- 速度滑块 -->
-        <LinearLayout
-            android:layout_width="280pt"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="8pt">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="SPD"
-                android:textColor="#aaa"
-                android:textSize="13sp" />
-
-            <SeekBar
-                android:id="@+id/speedBar"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="8pt"
-                android:layout_marginEnd="8pt"
-                android:max="100"
-                android:min="10"
-                android:progress="50" />
-
-            <TextView
-                android:id="@+id/tvSpeed"
-                android:layout_width="32pt"
-                android:layout_height="wrap_content"
-                android:text="50%"
-                android:textColor="#4ade80"
-                android:textSize="14sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <Space
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
-
-    </LinearLayout>
-
-    <!-- 右侧：状态面板 -->
-    <LinearLayout
-        android:layout_width="180pt"
-        android:layout_height="match_parent"
-        android:orientation="vertical"
+        android:id="@+id/layoutWifiStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="16pt"
+        android:orientation="horizontal"
         android:gravity="center"
-        android:layout_marginStart="12pt"
-        android:padding="16pt"
-        android:background="#16213e"
-        android:layout_gravity="center">
+        android:paddingHorizontal="16pt"
+        android:paddingVertical="6pt"
+        android:background="@drawable/bg_wifi_status_panel">
 
-        <!-- WiFi 状态 -->
         <ImageView
             android:id="@+id/ivWifiStatus"
-            android:layout_width="36pt"
-            android:layout_height="36pt"
+            android:layout_width="18pt"
+            android:layout_height="18pt"
             android:src="@drawable/ic_wifi_green"
             app:tint="#666" />
 
@@ -183,45 +29,165 @@
             android:id="@+id/tvWifiStatus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8pt"
+            android:layout_marginStart="8pt"
             android:text="Disconnected"
             android:textColor="#888"
             android:textSize="12sp" />
 
-        <Space
-            android:layout_width="match_parent"
-            android:layout_height="16pt" />
-
-        <!-- 目标 IP -->
         <TextView
+            android:id="@+id/tvIpAddress"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginStart="12pt"
             android:text="192.168.4.1"
-            android:textColor="#aaa"
+            android:textColor="#555"
             android:textSize="11sp" />
 
-        <Space
-            android:layout_width="match_parent"
-            android:layout_height="12pt" />
+    </LinearLayout>
 
-        <!-- 最后指令 -->
+    <!-- 底部控制栏 — 速度显示 -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="12pt"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingHorizontal="16pt"
+        android:paddingVertical="6pt"
+        android:background="@drawable/bg_wifi_status_panel">
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Last Cmd"
-            android:textColor="#666"
-            android:textSize="10sp" />
+            android:text="SPD"
+            android:textColor="#64748b"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/tvSpeed"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6pt"
+            android:text="0%"
+            android:textColor="#4ade80"
+            android:textSize="14sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tvLastCmd"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4pt"
+            android:layout_marginStart="20pt"
             android:text="Ready"
-            android:textColor="#4ade80"
-            android:textSize="14sp"
-            android:textStyle="bold" />
+            android:textColor="#475569"
+            android:textSize="11sp" />
 
     </LinearLayout>
 
-</LinearLayout>
+    <!-- 核心控制区 — 三列布局 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:paddingHorizontal="20pt"
+        android:paddingTop="50pt"
+        android:paddingBottom="44pt">
+
+        <!-- 左侧摇杆 — 前后控制 -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+
+            <com.aicontrol.android.widget.SingleAxisJoystickView
+                android:id="@+id/joystickVertical"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_gravity="center" />
+
+            <!-- 前后标签 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|center_horizontal"
+                android:layout_marginTop="6pt"
+                android:text="FORWARD"
+                android:textColor="#475569"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|center_horizontal"
+                android:layout_marginBottom="6pt"
+                android:text="BACK"
+                android:textColor="#475569"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+        </FrameLayout>
+
+        <!-- 中间 — 3D 停止按钮 -->
+        <FrameLayout
+            android:layout_width="100pt"
+            android:layout_height="match_parent">
+
+            <Button
+                android:id="@+id/btnStop"
+                android:layout_width="80pt"
+                android:layout_height="80pt"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_stop_3d_selector"
+                android:text="STOP"
+                android:textColor="@android:color/white"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:shadowColor="#000"
+                android:shadowDx="0"
+                android:shadowDy="2"
+                android:shadowRadius="3" />
+
+        </FrameLayout>
+
+        <!-- 右侧摇杆 — 左右转向 -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1">
+
+            <com.aicontrol.android.widget.SingleAxisJoystickView
+                android:id="@+id/joystickHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:layout_gravity="center" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|left"
+                android:layout_marginTop="6pt"
+                android:layout_marginStart="6pt"
+                android:text="LEFT"
+                android:textColor="#475569"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|right"
+                android:layout_marginTop="6pt"
+                android:layout_marginEnd="6pt"
+                android:text="RIGHT"
+                android:textColor="#475569"
+                android:textSize="10sp"
+                android:textStyle="bold" />
+
+        </FrameLayout>
+
+    </LinearLayout>
+
+</FrameLayout>

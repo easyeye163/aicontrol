@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 外层阴影 -->
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#40000000" />
+            <padding
+                android:bottom="4dp"
+                android:left="2dp"
+                android:right="2dp"
+                android:top="0dp" />
+        </shape>
+    </item>
+
+    <!-- 主体 3D 球体 -->
+    <item>
+        <shape android:shape="oval">
+            <gradient
+                android:endColor="#991b1b"
+                android:gradientRadius="50%p"
+                android:startColor="#f87171"
+                android:type="radial"
+                android:centerX="0.4"
+                android:centerY="0.35" />
+            <stroke
+                android:width="2dp"
+                android:color="#7f1d1d" />
+        </shape>
+    </item>
+
+</layer-list>
