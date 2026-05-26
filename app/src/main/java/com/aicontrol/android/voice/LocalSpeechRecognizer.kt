@@ -33,6 +33,8 @@ class LocalSpeechRecognizer(private val context: Context) {
         private const val MAX_RETRY = 1
         /** cancel() 后等待多久再 startListening()，某些设备需要延时才能正常重启 */
         private const val CANCEL_TO_START_DELAY_MS = 200L
+        /** 识别超时：如果开始录音后 N 秒内没有任何结果/错误回调，强制重启 */
+        private const val RECOGNITION_TIMEOUT_MS = 12000L
     }
 
     interface Listener {
@@ -54,6 +56,8 @@ class LocalSpeechRecognizer(private val context: Context) {
     private var isListening = false
     private var retryCount = 0
     private val handler = Handler(Looper.getMainLooper())
+    /** 识别超时 Runnable，防止识别器挂起导致持续识别卡死 */
+    private var recognitionTimeoutRunnable: Runnable? = null
 
     private val recognitionListener = object : RecognitionListener {
         override fun onReadyForSpeech(params: Bundle?) {
@@ -64,6 +68,15 @@ class LocalSpeechRecognizer(private val context: Context) {
             Log.i(TAG, "Beginning of speech")
             isListening = true
             listener?.onRecordingStarted()
+            // 启动识别超时计时器
+            cancelRecognitionTimeout()
+            recognitionTimeoutRunnable = Runnable {
+                Log.w(TAG, "Recognition timeout after ${RECOGNITION_TIMEOUT_MS}ms, forcing restart")
+                isListening = false
+                // 超时当作错误处理，通知上层重启
+                listener?.onError("识别超时(${RECOGNITION_TIMEOUT_MS / 1000}秒无响应)")
+            }
+            handler.postDelayed(recognitionTimeoutRunnable!!, RECOGNITION_TIMEOUT_MS)
         }
 
         override fun onRmsChanged(rmsdB: Float) {
@@ -79,11 +92,13 @@ class LocalSpeechRecognizer(private val context: Context) {
         override fun onEndOfSpeech() {
             Log.i(TAG, "End of speech")
             isListening = false
+            cancelRecognitionTimeout()
             listener?.onTranscribing()
         }
 
         override fun onError(error: Int) {
             isListening = false
+            cancelRecognitionTimeout()
 
             val msg = when (error) {
                 SpeechRecognizer.ERROR_AUDIO -> "录音错误"
@@ -120,6 +135,7 @@ class LocalSpeechRecognizer(private val context: Context) {
         override fun onResults(results: Bundle?) {
             isListening = false
             retryCount = 0
+            cancelRecognitionTimeout()
 
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             // 打印完整的 results Bundle 用于调试
@@ -243,6 +259,7 @@ class LocalSpeechRecognizer(private val context: Context) {
      * 取消语音识别（不触发 onResults）
      */
     fun cancel() {
+        cancelRecognitionTimeout()
         try {
             speechRecognizer?.cancel()
         } catch (e: Exception) {
@@ -250,6 +267,16 @@ class LocalSpeechRecognizer(private val context: Context) {
         }
         isListening = false
         retryCount = 0
+    }
+
+    /**
+     * 取消识别超时计时器
+     */
+    private fun cancelRecognitionTimeout() {
+        recognitionTimeoutRunnable?.let {
+            handler.removeCallbacks(it)
+        }
+        recognitionTimeoutRunnable = null
     }
 
     /**
@@ -272,6 +299,7 @@ class LocalSpeechRecognizer(private val context: Context) {
      * 释放资源（Activity onDestroy 时调用）
      */
     fun destroy() {
+        cancelRecognitionTimeout()
         handler.removeCallbacksAndMessages(null)
         try {
             speechRecognizer?.cancel()

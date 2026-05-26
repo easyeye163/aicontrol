@@ -1,7 +1,7 @@
 {
-  "versionCode": 76,
-  "versionName": "v0.0.76",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.76/AiControl-latest.apk",
-  "releaseNotes": "修复持续识别无响应+摇杆TTS播报",
+  "versionCode": 77,
+  "versionName": "v0.0.77",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.77/AiControl-latest.apk",
+  "releaseNotes": "识别超时保护+WiFi无网络自动走移动流量",
   "releaseDate": "2026-05-27"
 }

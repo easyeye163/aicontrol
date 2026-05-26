@@ -4,6 +4,10 @@ import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.util.Log
 import com.aicontrol.android.utils.KVUtils
 import com.aicontrol.android.utils.XLog
@@ -46,6 +50,21 @@ class HttpSttVoiceRecognizer(private val context: Context) {
 
         /** 默认 STT 模型 */
         const val DEFAULT_STT_MODEL = "whisper-1"
+
+        /**
+         * 创建 OkHttp 客户端，可选绑定到特定网络
+         * @param network 如果指定，所有请求走该网络（用于蜂窝网络回退）
+         */
+        private fun createHttpClient(network: Network?): OkHttpClient {
+            val builder = OkHttpClient.Builder()
+                .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            if (network != null) {
+                builder.socketFactory(network.socketFactory)
+            }
+            return builder.build()
+        }
     }
 
     interface Listener {
@@ -63,11 +82,9 @@ class HttpSttVoiceRecognizer(private val context: Context) {
     var sttModel: String = DEFAULT_STT_MODEL
 
     private val isRecording = AtomicBoolean(false)
-    private val httpClient = OkHttpClient.Builder()
-        .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
-        .build()
+    private var httpClient = createHttpClient(null)
+    private var mobileNetwork: Network? = null
+    private val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
 
     private var audioRecord: AudioRecord? = null
     private var recordingJob: Job? = null
@@ -85,6 +102,9 @@ class HttpSttVoiceRecognizer(private val context: Context) {
             XLog.w(TAG, "Already recording")
             return
         }
+
+        // 检查网络：WiFi无互联网时尝试使用移动流量
+        ensureNetworkAvailable()
 
         val bufferSize = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT)
         if (bufferSize == AudioRecord.ERROR || bufferSize == AudioRecord.ERROR_BAD_VALUE) {
@@ -242,6 +262,54 @@ class HttpSttVoiceRecognizer(private val context: Context) {
         } catch (e: Exception) {
             XLog.e(TAG, "transcribeAudio failed", e)
             listener?.onError("语音识别失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 检查当前网络是否有互联网，如果没有（WiFi连小车无外网），尝试切换到移动流量
+     */
+    private fun ensureNetworkAvailable() {
+        try {
+            val cm = connectivityManager ?: return
+            val activeNetwork = cm.activeNetwork
+            val caps = cm.getNetworkCapabilities(activeNetwork)
+
+            // 检查当前网络是否有互联网能力
+            val hasInternet = caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+                    && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+
+            if (hasInternet) {
+                // 当前网络可用，使用默认客户端
+                if (mobileNetwork != null) {
+                    XLog.i(TAG, "Default network has internet, switching back to default")
+                    mobileNetwork = null
+                    httpClient = createHttpClient(null)
+                }
+                return
+            }
+
+            // 当前网络无互联网，查找蜂窝网络
+            XLog.i(TAG, "Current network has no internet, looking for cellular...")
+            val request = NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addTransportType(NetworkCapabilities.TRANSPORT_CELLULAR)
+                .build()
+
+            val networks = cm.allNetworks
+            for (network in networks) {
+                val netCaps = cm.getNetworkCapabilities(network) ?: continue
+                if (netCaps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+                    && netCaps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                ) {
+                    mobileNetwork = network
+                    httpClient = createHttpClient(network)
+                    XLog.i(TAG, "Using cellular network for STT API: $network")
+                    return
+                }
+            }
+            XLog.w(TAG, "No cellular network available for fallback")
+        } catch (e: Exception) {
+            XLog.w(TAG, "ensureNetworkAvailable error: ${e.message}")
         }
     }
 
