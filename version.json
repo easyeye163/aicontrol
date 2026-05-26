@@ -1,7 +1,7 @@
 {
-  "versionCode": 74,
-  "versionName": "v0.0.74",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.74/AiControl-latest.apk",
-  "releaseNotes": "修复TTS不播报+持续识别调试信息+中间结果显示",
+  "versionCode": 75,
+  "versionName": "v0.0.75",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.75/AiControl-latest.apk",
+  "releaseNotes": "摇杆推到顶才发送100%指令，回中才发送停止，中间过程不发请求",
   "releaseDate": "2026-05-27"
 }

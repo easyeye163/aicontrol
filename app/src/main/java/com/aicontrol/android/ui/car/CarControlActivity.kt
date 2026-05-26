@@ -78,6 +78,10 @@ class CarControlActivity : BaseActivity() {
     private var verticalPercent = 0f   // -1(后) ~ 0(中) ~ 1(前)
     private var horizontalPercent = 0f  // -1(左) ~ 0(中) ~ 1(右)
 
+    // 摇杆命令状态追踪（只有推到顶才发送，回中才停止）
+    private var verticalCommandActive = false
+    private var horizontalCommandActive = false
+
     // 语音控制
     private var isRecording = false
     /** 持续识别模式：开启后识别完自动重新开始监听 */
@@ -210,45 +214,73 @@ class CarControlActivity : BaseActivity() {
         }
 
         // 左摇杆 — 前后控制 (vertical)
+        // 只在推到顶（>=95%）时发送100%方向指令，回中（<=5%）时发送停止
+        // 中间过程不发送任何HTTP请求
         joystickVertical = findViewById(R.id.joystickVertical)
         joystickVertical.axis = SingleAxisJoystickView.Axis.VERTICAL
         joystickVertical.onMove = { percent ->
             verticalPercent = percent
             updateSpeedDisplay()
-            handler.removeCallbacks(sendRunnable)
-            if (Math.abs(verticalPercent) > 0.05f || Math.abs(horizontalPercent) > 0.05f) {
-                handler.post(sendRunnable)
-            } else if (Math.abs(horizontalPercent) <= 0.05f) {
-                sendCommand("stop")
+            val absP = Math.abs(percent)
+            when {
+                absP >= 0.95f && !verticalCommandActive -> {
+                    // 推到顶：发送100%方向指令
+                    verticalCommandActive = true
+                    val direction = if (percent > 0) "forw" else "back"
+                    sendCommand(direction, 100)
+                    val dirLabel = if (percent > 0) "前进" else "后退"
+                    tvLastCmd.text = "$dirLabel 100%"
+                }
+                absP <= 0.05f && verticalCommandActive -> {
+                    // 回中：发送停止指令
+                    verticalCommandActive = false
+                    if (!horizontalCommandActive) {
+                        sendCommand("stop")
+                    }
+                }
             }
         }
         joystickVertical.onRelease = {
             verticalPercent = 0f
+            verticalCommandActive = false
             updateSpeedDisplay()
-            if (Math.abs(horizontalPercent) <= 0.05f) {
-                handler.removeCallbacks(sendRunnable)
+            if (!horizontalCommandActive) {
                 sendCommand("stop")
             }
         }
 
         // 右摇杆 — 左右转向 (horizontal)
+        // 只在推到顶（>=95%）时发送100%方向指令，回中（<=5%）时发送停止
+        // 中间过程不发送任何HTTP请求
         joystickHorizontal = findViewById(R.id.joystickHorizontal)
         joystickHorizontal.axis = SingleAxisJoystickView.Axis.HORIZONTAL
         joystickHorizontal.onMove = { percent ->
             horizontalPercent = percent
             updateSpeedDisplay()
-            handler.removeCallbacks(sendRunnable)
-            if (Math.abs(verticalPercent) > 0.05f || Math.abs(horizontalPercent) > 0.05f) {
-                handler.post(sendRunnable)
-            } else if (Math.abs(verticalPercent) <= 0.05f) {
-                sendCommand("stop")
+            val absP = Math.abs(percent)
+            when {
+                absP >= 0.95f && !horizontalCommandActive -> {
+                    // 推到顶：发送100%方向指令
+                    horizontalCommandActive = true
+                    val direction = if (percent < 0) "left" else "right"
+                    sendCommand(direction, 100)
+                    val dirLabel = if (percent < 0) "左转" else "右转"
+                    tvLastCmd.text = "$dirLabel 100%"
+                }
+                absP <= 0.05f && horizontalCommandActive -> {
+                    // 回中：发送停止指令
+                    horizontalCommandActive = false
+                    if (!verticalCommandActive) {
+                        sendCommand("stop")
+                    }
+                }
             }
         }
         joystickHorizontal.onRelease = {
             horizontalPercent = 0f
+            horizontalCommandActive = false
             updateSpeedDisplay()
-            if (Math.abs(verticalPercent) <= 0.05f) {
-                handler.removeCallbacks(sendRunnable)
+            if (!verticalCommandActive) {
                 sendCommand("stop")
             }
         }
@@ -681,6 +713,8 @@ class CarControlActivity : BaseActivity() {
 
     private fun executeForward() {
         handler.removeCallbacks(sendRunnable)
+        verticalCommandActive = true
+        horizontalCommandActive = false
         verticalPercent = 1f
         horizontalPercent = 0f
         joystickVertical.setPercentAnimated(1f, 200L)
@@ -694,6 +728,8 @@ class CarControlActivity : BaseActivity() {
 
     private fun executeBackward() {
         handler.removeCallbacks(sendRunnable)
+        verticalCommandActive = true
+        horizontalCommandActive = false
         verticalPercent = -1f
         horizontalPercent = 0f
         joystickVertical.setPercentAnimated(-1f, 200L)
@@ -707,6 +743,8 @@ class CarControlActivity : BaseActivity() {
 
     private fun executeLeft() {
         handler.removeCallbacks(sendRunnable)
+        verticalCommandActive = false
+        horizontalCommandActive = true
         verticalPercent = 0f
         horizontalPercent = -1f
         joystickVertical.setPercentAnimated(0f, 200L)
@@ -720,6 +758,8 @@ class CarControlActivity : BaseActivity() {
 
     private fun executeRight() {
         handler.removeCallbacks(sendRunnable)
+        verticalCommandActive = false
+        horizontalCommandActive = true
         verticalPercent = 0f
         horizontalPercent = 1f
         joystickVertical.setPercentAnimated(0f, 200L)
@@ -733,6 +773,8 @@ class CarControlActivity : BaseActivity() {
 
     private fun executeStop() {
         handler.removeCallbacks(sendRunnable)
+        verticalCommandActive = false
+        horizontalCommandActive = false
         verticalPercent = 0f
         horizontalPercent = 0f
         joystickVertical.setPercentAnimated(0f, 200L)
@@ -744,6 +786,8 @@ class CarControlActivity : BaseActivity() {
     }
 
     private fun autoReturnToCenter() {
+        verticalCommandActive = false
+        horizontalCommandActive = false
         verticalPercent = 0f
         horizontalPercent = 0f
         joystickVertical.setPercentAnimated(0f, 200L)
