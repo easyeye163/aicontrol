@@ -263,10 +263,8 @@ class CarControlActivity : BaseActivity() {
      */
     private fun toggleContinuousVoice() {
         if (isContinuousMode) {
-            // 关闭持续识别
             stopContinuousVoice()
         } else {
-            // 开启持续识别
             startContinuousVoice()
         }
     }
@@ -299,6 +297,35 @@ class CarControlActivity : BaseActivity() {
         XLog.i(TAG, "Continuous voice mode OFF")
     }
 
+    /**
+     * 调度重新开始监听
+     * 关键：等 TTS 播完后再重启识别器，否则识别器抢占音频焦点导致 TTS 被中断
+     */
+    private fun scheduleRestartListening(delayMs: Long = 500L) {
+        if (!isContinuousMode) return
+        handler.postDelayed({
+            if (!isContinuousMode || isRecording) return@postDelayed
+            // 如果 TTS 正在播报，等它播完再启动识别器（每 200ms 检查一次）
+            if (ttsManager?.isSpeaking == true) {
+                tvLastCmd.text = "播报中，等待重启..."
+                handler.postDelayed(object : Runnable {
+                    override fun run() {
+                        if (!isContinuousMode || isRecording) return
+                        if (ttsManager?.isSpeaking == true) {
+                            // 还在播报，继续等
+                            handler.postDelayed(this, 200)
+                            return
+                        }
+                        tvLastCmd.text = "继续聆听..."
+                        startListening()
+                    }
+                }, 200)
+                return@postDelayed
+            }
+            startListening()
+        }, delayMs)
+    }
+
     private fun initVoice() {
         ttsManager = TtsManager(this)
         voiceController = VoiceInputController(this)
@@ -322,13 +349,8 @@ class CarControlActivity : BaseActivity() {
                 runOnUiThread {
                     isRecording = false
                     processVoiceCommand(text)
-                    // 持续识别模式下，识别完后自动重新开始
                     if (isContinuousMode) {
-                        handler.postDelayed({
-                            if (isContinuousMode && !isRecording) {
-                                startListening()
-                            }
-                        }, 500)
+                        scheduleRestartListening()
                     }
                 }
             }
@@ -337,14 +359,9 @@ class CarControlActivity : BaseActivity() {
                 XLog.w(TAG, "STT error: $message")
                 runOnUiThread {
                     isRecording = false
-                    // 持续识别模式下，错误后也自动重试（延迟稍长）
                     if (isContinuousMode) {
                         tvLastCmd.text = "$message，重试中..."
-                        handler.postDelayed({
-                            if (isContinuousMode && !isRecording) {
-                                startListening()
-                            }
-                        }, 1000)
+                        scheduleRestartListening(1000)
                     } else {
                         updateVoiceButton(false)
                         tvLastCmd.text = message
@@ -386,14 +403,16 @@ class CarControlActivity : BaseActivity() {
                     runOnUiThread {
                         isRecording = false
                         processVoiceCommand(text)
-                        // 持续识别模式下，识别完后自动重新开始
                         if (isContinuousMode) {
-                            handler.postDelayed({
-                                if (isContinuousMode && !isRecording) {
-                                    localRecognizer?.startListening()
-                                }
-                            }, 500)
+                            scheduleRestartListening()
                         }
+                    }
+                }
+
+                override fun onPartialResult(text: String?) {
+                    if (text.isNullOrBlank()) return
+                    runOnUiThread {
+                        tvLastCmd.text = "听: $text"
                     }
                 }
 
@@ -401,14 +420,9 @@ class CarControlActivity : BaseActivity() {
                     XLog.w(TAG, "Local STT error: $message")
                     runOnUiThread {
                         isRecording = false
-                        // 持续识别模式下，错误后也自动重试
                         if (isContinuousMode) {
                             tvLastCmd.text = "$message，重试中..."
-                            handler.postDelayed({
-                                if (isContinuousMode && !isRecording) {
-                                    localRecognizer?.startListening()
-                                }
-                            }, 1000)
+                            scheduleRestartListening(1000)
                         } else {
                             updateVoiceButton(false)
                             tvLastCmd.text = message
@@ -444,13 +458,8 @@ class CarControlActivity : BaseActivity() {
                 runOnUiThread {
                     isRecording = false
                     processVoiceCommand(text)
-                    // 持续识别模式下，识别完后自动重新开始
                     if (isContinuousMode) {
-                        handler.postDelayed({
-                            if (isContinuousMode && !isRecording) {
-                                startHttpListening()
-                            }
-                        }, 500)
+                        scheduleRestartListening()
                     }
                 }
             }
@@ -461,11 +470,7 @@ class CarControlActivity : BaseActivity() {
                     isRecording = false
                     if (isContinuousMode) {
                         tvLastCmd.text = "$message，重试中..."
-                        handler.postDelayed({
-                            if (isContinuousMode && !isRecording) {
-                                startHttpListening()
-                            }
-                        }, 1000)
+                        scheduleRestartListening(1000)
                     } else {
                         updateVoiceButton(false)
                         tvLastCmd.text = "语音错误"
@@ -480,7 +485,6 @@ class CarControlActivity : BaseActivity() {
     private fun updateVoiceButton(recording: Boolean) {
         val btnVoice = findViewById<View>(R.id.btnVoice)
         if (recording || isContinuousMode) {
-            // 持续模式下录音中显示红色，录音间隙显示橙色
             btnVoice?.setBackgroundColor(
                 if (recording) Color.parseColor("#ef4444")
                 else Color.parseColor("#f97316")
@@ -492,16 +496,9 @@ class CarControlActivity : BaseActivity() {
 
     // ==================== 拼音模糊匹配 ====================
 
-    /**
-     * 汉字转拼音（小写无调）
-     * 优先使用 android.icu.text.Transliterator（API 29+），
-     * 回退使用内置常用字拼音表
-     */
     private fun toPinyin(text: String): String {
         if (text.isEmpty()) return ""
-        // 先检查是否全是非中文（英文/数字/符号），直接返回
         if (text.all { it.code < 0x4E00 || it.code > 0x9FFF }) return text.lowercase()
-        // API 29+ 使用 ICU Transliterator
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
             return try {
                 android.icu.text.Transliterator.getInstance("Han-Latin").transliterate(text)
@@ -515,9 +512,6 @@ class CarControlActivity : BaseActivity() {
         return fallbackPinyin(text)
     }
 
-    /**
-     * 回退拼音表（小车控制常用字）
-     */
     private fun fallbackPinyin(text: String): String {
         val map = mapOf(
             '前' to "qian", '后' to "hou", '左' to "zuo", '右' to "you",
@@ -530,9 +524,6 @@ class CarControlActivity : BaseActivity() {
         return text.map { map[it] ?: it.toString() }.joinToString("").lowercase()
     }
 
-    /**
-     * 计算两个拼音字符串的 Levenshtein 编辑距离
-     */
     private fun pinyinLevenshtein(a: String, b: String): Int {
         val m = a.length
         val n = b.length
@@ -553,22 +544,12 @@ class CarControlActivity : BaseActivity() {
         return dp[m][n]
     }
 
-    /**
-     * 拼音相似度匹配：先精确中文包含匹配，再转拼音做包含/编辑距离比较
-     * @param text 语音识别结果原文
-     * @param keyword 配置的关键词原文
-     * @return 相似度分数 0~1
-     */
     private fun pinyinScore(text: String, keyword: String): Float {
         if (text.isEmpty() || keyword.isEmpty()) return 0f
-        // 1. 精确中文包含 → 满分
         if (text.contains(keyword)) return 1.0f
-        // 2. 转拼音比较
         val textPy = toPinyin(text)
         val kwPy = toPinyin(keyword)
-        // 拼音包含 → 满分（如"往前走" → "qianwangzou" 包含 "qian"）
         if (textPy.contains(kwPy)) return 1.0f
-        // 3. 拼音编辑距离：滑动窗口取最高分
         val kwPyLen = kwPy.length
         val textPyLen = textPy.length
         var bestScore = 0f
@@ -586,13 +567,12 @@ class CarControlActivity : BaseActivity() {
 
     /**
      * 处理语音识别结果，用拼音模糊匹配取最高相似度关键词执行
-     * 例如"左边"(zuobian) vs "右边"(youbian) 拼音差异大，不会误判
+     * 显示：识别原文 → 拼音 → 各关键词得分 → 匹配结果
      */
     private fun processVoiceCommand(text: String) {
-        XLog.i(TAG, "Voice result: $text")
         // 标点过滤
         val trimmed = text.trim().replace(Regex("[\\p{P}\\p{S}]"), "")
-        tvLastCmd.text = "\"$trimmed\""
+        XLog.i(TAG, "Voice result: $text -> trimmed: $trimmed")
 
         val keywords = listOf(
             KVUtils.getCarKeywordForward() to ::executeForward,
@@ -605,20 +585,29 @@ class CarControlActivity : BaseActivity() {
         val threshold = 0.5f
         var bestScore = threshold
         var bestAction: (() -> Unit)? = null
+        var bestKeyword = ""
 
+        // 计算每个关键词的得分
+        val scoreInfo = StringBuilder()
         for ((keyword, action) in keywords) {
             val score = pinyinScore(trimmed, keyword)
+            scoreInfo.append("${keyword}=${"%.2f".format(score)} ")
             XLog.i(TAG, "  keyword='$keyword' pinyin='${toPinyin(keyword)}' score=$score")
             if (score > bestScore) {
                 bestScore = score
                 bestAction = action
+                bestKeyword = keyword
             }
         }
 
         if (bestAction != null) {
+            // 匹配成功：显示识别结果和匹配的关键词
+            tvLastCmd.text = "\"$trimmed\" -> $bestKeyword(${"%.0f".format(bestScore * 100)}%)"
             bestAction.invoke()
         } else {
-            XLog.i(TAG, "No keyword matched (threshold=$threshold)")
+            // 未匹配：显示识别原文和各得分，方便调试
+            tvLastCmd.text = "未匹配: \"$trimmed\" [$scoreInfo]"
+            XLog.i(TAG, "No keyword matched. Scores: $scoreInfo")
         }
     }
 
@@ -638,10 +627,7 @@ class CarControlActivity : BaseActivity() {
         tvLastCmd.text = "前进 100%"
         tvSpeed.text = "100%"
         speakTts("已前进")
-        // 2秒后自动回中
-        handler.postDelayed({
-            autoReturnToCenter()
-        }, 2000)
+        handler.postDelayed({ autoReturnToCenter() }, 2000)
     }
 
     private fun executeBackward() {
@@ -654,9 +640,7 @@ class CarControlActivity : BaseActivity() {
         tvLastCmd.text = "后退 100%"
         tvSpeed.text = "100%"
         speakTts("已后退")
-        handler.postDelayed({
-            autoReturnToCenter()
-        }, 2000)
+        handler.postDelayed({ autoReturnToCenter() }, 2000)
     }
 
     private fun executeLeft() {
@@ -669,9 +653,7 @@ class CarControlActivity : BaseActivity() {
         tvLastCmd.text = "左转 100%"
         tvSpeed.text = "100%"
         speakTts("已左转")
-        handler.postDelayed({
-            autoReturnToCenter()
-        }, 2000)
+        handler.postDelayed({ autoReturnToCenter() }, 2000)
     }
 
     private fun executeRight() {
@@ -684,9 +666,7 @@ class CarControlActivity : BaseActivity() {
         tvLastCmd.text = "右转 100%"
         tvSpeed.text = "100%"
         speakTts("已右转")
-        handler.postDelayed({
-            autoReturnToCenter()
-        }, 2000)
+        handler.postDelayed({ autoReturnToCenter() }, 2000)
     }
 
     private fun executeStop() {
@@ -701,16 +681,17 @@ class CarControlActivity : BaseActivity() {
         speakTts("已停止")
     }
 
-    /**
-     * 自动回中并发送停止指令
-     */
     private fun autoReturnToCenter() {
         verticalPercent = 0f
         horizontalPercent = 0f
         joystickVertical.setPercentAnimated(0f, 200L)
         joystickHorizontal.setPercentAnimated(0f, 200L)
         sendCommand("stop")
-        tvLastCmd.text = "持续识别中..."
+        if (isContinuousMode) {
+            tvLastCmd.text = "继续聆听..."
+        } else {
+            tvLastCmd.text = "就绪"
+        }
         tvSpeed.text = "0%"
     }
 

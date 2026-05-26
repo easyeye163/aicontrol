@@ -14,7 +14,7 @@ import java.util.Locale
 /**
  * Android 系统自带语音识别器
  *
- * 封装 SpeechRecognizer，使用按住说话松手识别模式。
+ * 封装 SpeechRecognizer，使用持续识别模式。
  * 无需网络 API，可离线使用（取决于系统是否下载了离线语音包）。
  *
  * 关键设计：
@@ -23,6 +23,7 @@ import java.util.Locale
  * - ERROR_RECOGNIZER_BUSY / ERROR_CLIENT 时自动延迟重试（最多 1 次）
  * - 移除 EXTRA_PROMPT（避免部分 ROM 弹窗干扰）
  * - 设置 EXTRA_CALLING_PACKAGE（部分国产 ROM 要求）
+ * - 支持中间结果（onPartialResult）用于实时显示
  */
 class LocalSpeechRecognizer(private val context: Context) {
 
@@ -39,6 +40,8 @@ class LocalSpeechRecognizer(private val context: Context) {
         fun onTranscribing() {}
         /** 识别成功 */
         fun onResult(text: String) {}
+        /** 中间结果（实时显示用，可能为空取决于设备） */
+        fun onPartialResult(text: String?) {}
         /** 发生错误 */
         fun onError(message: String) {}
     }
@@ -61,7 +64,9 @@ class LocalSpeechRecognizer(private val context: Context) {
             listener?.onRecordingStarted()
         }
 
-        override fun onRmsChanged(rmsdB: Float) {}
+        override fun onRmsChanged(rmsdB: Float) {
+            // 音量变化，可用于显示录音状态
+        }
 
         override fun onBufferReceived(buffer: ByteArray?) {}
 
@@ -116,12 +121,17 @@ class LocalSpeechRecognizer(private val context: Context) {
                 return
             }
             val text = matches[0]
-            Log.i(TAG, "Result: $text")
+            Log.i(TAG, "Result: $text (all: $matches)")
             listener?.onResult(text)
         }
 
         override fun onPartialResults(partialResults: Bundle?) {
-            // 不处理中间结果
+            val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+            if (!matches.isNullOrEmpty()) {
+                val text = matches[0]
+                Log.d(TAG, "Partial: $text")
+                listener?.onPartialResult(text)
+            }
         }
 
         override fun onEvent(eventType: Int, params: Bundle?) {}
@@ -169,9 +179,13 @@ class LocalSpeechRecognizer(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, "zh-CN")
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "zh-CN")
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
             // 不设置 EXTRA_PROMPT，避免部分 ROM 弹出对话框干扰
+            // 设置语音输入结束的静音检测时长（毫秒），用于持续识别
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 200L)
         }
 
         try {
@@ -185,8 +199,7 @@ class LocalSpeechRecognizer(private val context: Context) {
     }
 
     /**
-     * 停止语音识别（松手时调用）
-     * 调用 stopListening() 让系统完成当前录音并返回结果
+     * 停止语音识别
      */
     fun stopListening() {
         if (!isListening) return

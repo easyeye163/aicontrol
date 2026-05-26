@@ -1,7 +1,7 @@
 {
-  "versionCode": 73,
-  "versionName": "v0.0.73",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.73/AiControl-latest.apk",
-  "releaseNotes": "语音改为点击持续识别模式，修复TTS语音播报不生效",
-  "releaseDate": "2026-05-26"
+  "versionCode": 74,
+  "versionName": "v0.0.74",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.74/AiControl-latest.apk",
+  "releaseNotes": "修复TTS不播报+持续识别调试信息+中间结果显示",
+  "releaseDate": "2026-05-27"
 }
