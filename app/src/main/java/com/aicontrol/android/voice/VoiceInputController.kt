@@ -12,9 +12,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * 核心设计：
  * 1. AudioRecord 录制 PCM 16kHz 单声道
- * 2. 松手后转为 WAV，通过 HTTP POST 发送到 /v1/audio/transcriptions
+ * 2. 自动检测静音后停止录音，转为 WAV，通过 HTTP POST 发送到 /v1/audio/transcriptions
  * 3. 优先使用独立 STT 配置，未配置时回退使用 LLM 配置
  * 4. 无需依赖 Google SpeechRecognizer
+ *
+ * v0.0.80 新增：
+ * - 支持持续识别模式（setAutoSilenceStop）
+ * - 调试日志回调透传
  */
 class VoiceInputController(private val context: Context) {
 
@@ -45,6 +49,20 @@ class VoiceInputController(private val context: Context) {
 
     val isListening: Boolean
         get() = isListeningAtomic.get()
+
+    /**
+     * 设置是否开启自动静音停止（持续识别模式需要开启）
+     */
+    fun setAutoSilenceStop(enabled: Boolean) {
+        sttRecognizer?.setAutoSilenceStop(enabled)
+    }
+
+    /**
+     * 设置调试日志回调
+     */
+    fun setDebugLogCallback(callback: ((String) -> Unit)?) {
+        sttRecognizer?.debugLogCallback = callback
+    }
 
     /**
      * 开始语音识别（开始录音）

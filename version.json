@@ -1,7 +1,7 @@
 {
-  "versionCode": 79,
-  "versionName": "v0.0.79",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.79/AiControl-latest.apk",
-  "releaseNotes": "自定义静音检测，解决识别器不结束录音的问题",
+  "versionCode": 81,
+  "versionName": "v0.0.81",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.81/AiControl-latest.apk",
+  "releaseNotes": "增强型VAD：环境噪声自动校准、动态阈值、EMA平滑、语音优先检测、最短语音保护",
   "releaseDate": "2026-05-27"
 }

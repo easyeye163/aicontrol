@@ -535,12 +535,19 @@ class CarControlActivity : BaseActivity() {
     private fun startHttpListening() {
         voiceController?.destroy()
         val controller = VoiceInputController(this)
+        // 持续识别模式：开启自动静音检测，说完话自动停止录音
+        controller.setAutoSilenceStop(true)
+        // 调试日志回调：让 HTTP STT 内部日志也显示在调试面板
+        controller.setDebugLogCallback { msg ->
+            appendDebugLog("[远程] $msg")
+        }
         controller.listener = object : VoiceInputController.Listener {
             override fun onListeningStarted() {
                 runOnUiThread {
                     isRecording = true
                     updateVoiceButton(true)
-                    tvLastCmd.text = "聆听中..."
+                    tvLastCmd.text = "聆听中(API)..."
+                    appendDebugLog("[识别] 录音开始(API模式)")
                 }
             }
 
@@ -548,14 +555,17 @@ class CarControlActivity : BaseActivity() {
                 runOnUiThread {
                     isRecording = false
                     tvLastCmd.text = "识别中..."
+                    appendDebugLog("[识别] 录音结束，正在识别...")
                 }
             }
 
             override fun onFinalResult(text: String) {
                 runOnUiThread {
                     isRecording = false
+                    appendDebugLog("[结果] 识别成功: \"$text\"")
                     processVoiceCommand(text)
                     if (isContinuousMode) {
+                        appendDebugLog("[调度] 等待500ms后重启识别")
                         scheduleRestartListening()
                     }
                 }
@@ -565,12 +575,14 @@ class CarControlActivity : BaseActivity() {
                 XLog.w(TAG, "STT error: $message")
                 runOnUiThread {
                     isRecording = false
+                    appendDebugLog("[错误] $message")
                     if (isContinuousMode) {
                         tvLastCmd.text = "$message，重试中..."
+                        appendDebugLog("[调度] 等待1s后重启识别")
                         scheduleRestartListening(1000)
                     } else {
                         updateVoiceButton(false)
-                        tvLastCmd.text = "语音错误"
+                        tvLastCmd.text = message
                     }
                 }
             }
