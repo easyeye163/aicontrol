@@ -23,19 +23,86 @@
             android:layout_height="wrap_content"
             android:orientation="vertical">
 
+            <!-- 小车 IP 地址 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="4pt"
+                android:paddingBottom="8pt"
+                android:text="小车 IP 地址"
+                android:textColor="@color/colorTextPrimary"
+                android:textSize="14pt"
+                android:textStyle="bold" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <androidx.cardview.widget.CardView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="3"
+                    app:cardBackgroundColor="@color/colorContainerBrighten"
+                    app:cardCornerRadius="12pt"
+                    app:cardElevation="1pt">
+
+                    <EditText
+                        android:id="@+id/etCarHost"
+                        android:layout_width="match_parent"
+                        android:layout_height="48pt"
+                        android:background="@null"
+                        android:hint="192.168.4.1"
+                        android:inputType="textUri"
+                        android:maxLines="1"
+                        android:paddingHorizontal="16pt"
+                        android:singleLine="true"
+                        android:textColor="@color/colorTextPrimary"
+                        android:textColorHint="@color/colorTextTertiary"
+                        android:textSize="15pt" />
+                </androidx.cardview.widget.CardView>
+
+                <androidx.cardview.widget.CardView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8pt"
+                    app:cardBackgroundColor="@color/colorContainerBrighten"
+                    app:cardCornerRadius="12pt"
+                    app:cardElevation="1pt">
+
+                    <EditText
+                        android:id="@+id/etCarPort"
+                        android:layout_width="match_parent"
+                        android:layout_height="48pt"
+                        android:background="@null"
+                        android:hint="80"
+                        android:inputType="number"
+                        android:maxLines="1"
+                        android:paddingHorizontal="16pt"
+                        android:singleLine="true"
+                        android:textColor="@color/colorTextPrimary"
+                        android:textColorHint="@color/colorTextTertiary"
+                        android:textSize="15pt" />
+                </androidx.cardview.widget.CardView>
+
+            </LinearLayout>
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:paddingHorizontal="4pt"
+                android:paddingTop="16pt"
                 android:paddingBottom="16pt"
-                android:text="设置语音控制关键词，语音识别匹配到对应关键词后自动控制小车"
+                android:text="设置小车 WiFi 模块的 IP 地址和端口，以及语音控制关键词"
                 android:textColor="@color/colorTextSecondary"
                 android:textSize="14pt" />
 
-            <!-- 前进关键词 -->
+            <!-- ====== 语音关键词 ====== -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="8pt"
                 android:paddingHorizontal="4pt"
                 android:paddingBottom="8pt"
                 android:text="前进关键词"

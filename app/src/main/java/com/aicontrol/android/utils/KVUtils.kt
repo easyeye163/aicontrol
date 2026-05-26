@@ -337,6 +337,15 @@ object KVUtils {
     fun getTtsPitch(): Float = getFloat(KEY_TTS_PITCH, 1.0f)
     fun setTtsPitch(value: Float): Boolean = putFloat(KEY_TTS_PITCH, value)
 
+    // ==================== 小车控制 ====================
+    private const val KEY_CAR_HOST = "KEY_CAR_HOST"
+    private const val KEY_CAR_PORT = "KEY_CAR_PORT"
+
+    fun getCarHost(): String = getString(KEY_CAR_HOST, "192.168.4.1")
+    fun setCarHost(value: String) = putString(KEY_CAR_HOST, value)
+    fun getCarPort(): Int = getInt(KEY_CAR_PORT, 80)
+    fun setCarPort(value: Int) = putInt(KEY_CAR_PORT, value)
+
     // ==================== 小车控制语音关键词 ====================
     private const val KEY_CAR_KW_FORWARD = "KEY_CAR_KW_FORWARD"
     private const val KEY_CAR_KW_BACKWARD = "KEY_CAR_KW_BACKWARD"

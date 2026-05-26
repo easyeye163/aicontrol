@@ -41,12 +41,14 @@ class CarControlActivity : BaseActivity() {
 
     companion object {
         private const val TAG = "CarControl"
-        private const val CAR_HOST = "192.168.4.1"
-        private const val CAR_PORT = 80
         private const val PING_INTERVAL_MS = 3000L
         private const val SEND_INTERVAL_MS = 100L
         private const val VOICE_RECORD_MS = 3000L
     }
+
+    // 从设置读取的小车地址（onCreate 初始化）
+    private var carHost = KVUtils.getCarHost()
+    private var carPort = KVUtils.getCarPort()
 
     private lateinit var ivWifiStatus: ImageView
     private lateinit var tvWifiStatus: TextView
@@ -124,12 +126,24 @@ class CarControlActivity : BaseActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         setContentView(R.layout.activity_car_control)
+
+        // 从配置读取小车地址
+        carHost = KVUtils.getCarHost()
+        carPort = KVUtils.getCarPort()
+
+        // 更新界面上的 IP 显示
+        findViewById<TextView>(R.id.tvIpAddress)?.text = "$carHost:$carPort"
+
         initViews()
         initVoice()
     }
 
     override fun onResume() {
         super.onResume()
+        // 每次恢复时重新读取配置（设置可能已更改）
+        carHost = KVUtils.getCarHost()
+        carPort = KVUtils.getCarPort()
+        findViewById<TextView>(R.id.tvIpAddress)?.text = "$carHost:$carPort"
         handler.post(pingRunnable)
     }
 
@@ -466,7 +480,7 @@ class CarControlActivity : BaseActivity() {
     // ==================== 网络通信 ====================
 
     private fun sendCommand(direction: String, speed: Int = 50) {
-        val urlStr = "http://$CAR_HOST:$CAR_PORT/control/${direction}_$speed"
+        val urlStr = "http://$carHost:$carPort/control/${direction}_$speed"
         lifecycleScope.launch {
             try {
                 withContext(Dispatchers.IO) {
@@ -486,7 +500,7 @@ class CarControlActivity : BaseActivity() {
         lifecycleScope.launch {
             val reachable = withContext(Dispatchers.IO) {
                 try {
-                    val address = InetAddress.getByName(CAR_HOST)
+                    val address = InetAddress.getByName(carHost)
                     address.isReachable(1500)
                 } catch (_: Exception) { false }
             }

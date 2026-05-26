@@ -1,7 +1,7 @@
 {
-  "versionCode": 68,
-  "versionName": "v0.0.68",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.68/AiControl-latest.apk",
-  "releaseNotes": "修复语音控制权限请求+复用VoiceInputController",
+  "versionCode": 69,
+  "versionName": "v0.0.69",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.69/AiControl-latest.apk",
+  "releaseNotes": "设置界面新增小车IP地址和端口配置",
   "releaseDate": "2026-05-26"
 }
