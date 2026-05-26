@@ -231,6 +231,10 @@
             android:name=".ui.car.CarControlActivity"
             android:exported="false"
             android:screenOrientation="landscape" />
+        <activity
+            android:name=".ui.car.CarControlSettingsActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
 
     </application>
 

@@ -192,22 +192,35 @@ class SingleAxisJoystickView @JvmOverloads constructor(
      * 松手后摇杆弹回中心
      */
     private fun animateReturn() {
+        animateToPercent(0f, 150L)
+    }
+
+    /**
+     * 外部调用：将摇杆动画移动到目标百分比
+     * @param target 目标值 -1.0 ~ 1.0
+     * @param duration 动画时长(ms)
+     */
+    fun setPercentAnimated(target: Float, duration: Long = 200L) {
+        animateToPercent(target.coerceIn(-1f, 1f), duration)
+    }
+
+    private fun animateToPercent(target: Float, duration: Long) {
         val startPercent = currentPercent
         val startTime = System.currentTimeMillis()
-        val duration = 150L
 
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
+        handler.removeCallbacksAndMessages(null)
         handler.post(object : Runnable {
             override fun run() {
                 val elapsed = System.currentTimeMillis() - startTime
                 val t = (elapsed.toFloat() / duration).coerceIn(0f, 1f)
                 // ease-out
                 val ease = 1f - (1f - t) * (1f - t)
-                currentPercent = startPercent * (1f - ease)
+                currentPercent = startPercent + (target - startPercent) * ease
                 if (t >= 1f) {
-                    currentPercent = 0f
+                    currentPercent = target
                     invalidate()
-                    onMove?.invoke(0f)
+                    onMove?.invoke(currentPercent)
                     return
                 }
                 onMove?.invoke(currentPercent)

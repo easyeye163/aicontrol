@@ -336,4 +336,22 @@ object KVUtils {
 
     fun getTtsPitch(): Float = getFloat(KEY_TTS_PITCH, 1.0f)
     fun setTtsPitch(value: Float): Boolean = putFloat(KEY_TTS_PITCH, value)
+
+    // ==================== 小车控制语音关键词 ====================
+    private const val KEY_CAR_KW_FORWARD = "KEY_CAR_KW_FORWARD"
+    private const val KEY_CAR_KW_BACKWARD = "KEY_CAR_KW_BACKWARD"
+    private const val KEY_CAR_KW_LEFT = "KEY_CAR_KW_LEFT"
+    private const val KEY_CAR_KW_RIGHT = "KEY_CAR_KW_RIGHT"
+    private const val KEY_CAR_KW_STOP = "KEY_CAR_KW_STOP"
+
+    fun getCarKeywordForward(): String = getString(KEY_CAR_KW_FORWARD, "前进")
+    fun setCarKeywordForward(value: String) = putString(KEY_CAR_KW_FORWARD, value)
+    fun getCarKeywordBackward(): String = getString(KEY_CAR_KW_BACKWARD, "后退")
+    fun setCarKeywordBackward(value: String) = putString(KEY_CAR_KW_BACKWARD, value)
+    fun getCarKeywordLeft(): String = getString(KEY_CAR_KW_LEFT, "左边")
+    fun setCarKeywordLeft(value: String) = putString(KEY_CAR_KW_LEFT, value)
+    fun getCarKeywordRight(): String = getString(KEY_CAR_KW_RIGHT, "右边")
+    fun setCarKeywordRight(value: String) = putString(KEY_CAR_KW_RIGHT, value)
+    fun getCarKeywordStop(): String = getString(KEY_CAR_KW_STOP, "停止")
+    fun setCarKeywordStop(value: String) = putString(KEY_CAR_KW_STOP, value)
 }

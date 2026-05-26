@@ -1,7 +1,7 @@
 {
-  "versionCode": 66,
-  "versionName": "v0.0.66",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.66/AiControl-latest.apk",
-  "releaseNotes": "修复文字重叠 + 前后方向反转",
+  "versionCode": 67,
+  "versionName": "v0.0.67",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.67/AiControl-latest.apk",
+  "releaseNotes": "新增语音控制小车功能：设置语音关键词、持续录音识别、摇杆动画联动、TTS语音播报",
   "releaseDate": "2026-05-26"
 }

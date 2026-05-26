@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/colorBgSecondary"
+    android:orientation="vertical">
+
+    <com.aicontrol.android.widget.CommonToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="56pt" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingHorizontal="16pt"
+        android:paddingTop="16pt">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="4pt"
+                android:paddingBottom="16pt"
+                android:text="设置语音控制关键词，语音识别匹配到对应关键词后自动控制小车"
+                android:textColor="@color/colorTextSecondary"
+                android:textSize="14pt" />
+
+            <!-- 前进关键词 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="4pt"
+                android:paddingBottom="8pt"
+                android:text="前进关键词"
+                android:textColor="@color/colorTextPrimary"
+                android:textSize="14pt"
+                android:textStyle="bold" />
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="@color/colorContainerBrighten"
+                app:cardCornerRadius="12pt"
+                app:cardElevation="1pt">
+
+                <EditText
+                    android:id="@+id/etKeywordForward"
+                    android:layout_width="match_parent"
+                    android:layout_height="48pt"
+                    android:background="@null"
+                    android:hint="默认：前进"
+                    android:maxLines="1"
+                    android:paddingHorizontal="16pt"
+                    android:singleLine="true"
+                    android:textColor="@color/colorTextPrimary"
+                    android:textColorHint="@color/colorTextTertiary"
+                    android:textSize="15pt" />
+            </androidx.cardview.widget.CardView>
+
+            <!-- 后退关键词 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20pt"
+                android:paddingHorizontal="4pt"
+                android:paddingBottom="8pt"
+                android:text="后退关键词"
+                android:textColor="@color/colorTextPrimary"
+                android:textSize="14pt"
+                android:textStyle="bold" />
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="@color/colorContainerBrighten"
+                app:cardCornerRadius="12pt"
+                app:cardElevation="1pt">
+
+                <EditText
+                    android:id="@+id/etKeywordBackward"
+                    android:layout_width="match_parent"
+                    android:layout_height="48pt"
+                    android:background="@null"
+                    android:hint="默认：后退"
+                    android:maxLines="1"
+                    android:paddingHorizontal="16pt"
+                    android:singleLine="true"
+                    android:textColor="@color/colorTextPrimary"
+                    android:textColorHint="@color/colorTextTertiary"
+                    android:textSize="15pt" />
+            </androidx.cardview.widget.CardView>
+
+            <!-- 左转关键词 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20pt"
+                android:paddingHorizontal="4pt"
+                android:paddingBottom="8pt"
+                android:text="左转关键词"
+                android:textColor="@color/colorTextPrimary"
+                android:textSize="14pt"
+                android:textStyle="bold" />
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="@color/colorContainerBrighten"
+                app:cardCornerRadius="12pt"
+                app:cardElevation="1pt">
+
+                <EditText
+                    android:id="@+id/etKeywordLeft"
+                    android:layout_width="match_parent"
+                    android:layout_height="48pt"
+                    android:background="@null"
+                    android:hint="默认：左边"
+                    android:maxLines="1"
+                    android:paddingHorizontal="16pt"
+                    android:singleLine="true"
+                    android:textColor="@color/colorTextPrimary"
+                    android:textColorHint="@color/colorTextTertiary"
+                    android:textSize="15pt" />
+            </androidx.cardview.widget.CardView>
+
+            <!-- 右转关键词 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20pt"
+                android:paddingHorizontal="4pt"
+                android:paddingBottom="8pt"
+                android:text="右转关键词"
+                android:textColor="@color/colorTextPrimary"
+                android:textSize="14pt"
+                android:textStyle="bold" />
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="@color/colorContainerBrighten"
+                app:cardCornerRadius="12pt"
+                app:cardElevation="1pt">
+
+                <EditText
+                    android:id="@+id/etKeywordRight"
+                    android:layout_width="match_parent"
+                    android:layout_height="48pt"
+                    android:background="@null"
+                    android:hint="默认：右边"
+                    android:maxLines="1"
+                    android:paddingHorizontal="16pt"
+                    android:singleLine="true"
+                    android:textColor="@color/colorTextPrimary"
+                    android:textColorHint="@color/colorTextTertiary"
+                    android:textSize="15pt" />
+            </androidx.cardview.widget.CardView>
+
+            <!-- 停止关键词 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20pt"
+                android:paddingHorizontal="4pt"
+                android:paddingBottom="8pt"
+                android:text="停止关键词"
+                android:textColor="@color/colorTextPrimary"
+                android:textSize="14pt"
+                android:textStyle="bold" />
+
+            <androidx.cardview.widget.CardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardBackgroundColor="@color/colorContainerBrighten"
+                app:cardCornerRadius="12pt"
+                app:cardElevation="1pt">
+
+                <EditText
+                    android:id="@+id/etKeywordStop"
+                    android:layout_width="match_parent"
+                    android:layout_height="48pt"
+                    android:background="@null"
+                    android:hint="默认：停止"
+                    android:maxLines="1"
+                    android:paddingHorizontal="16pt"
+                    android:singleLine="true"
+                    android:textColor="@color/colorTextPrimary"
+                    android:textColorHint="@color/colorTextTertiary"
+                    android:textSize="15pt" />
+            </androidx.cardview.widget.CardView>
+
+            <com.aicontrol.android.widget.KButton
+                android:id="@+id/btnSave"
+                android:layout_width="match_parent"
+                android:layout_height="48pt"
+                android:layout_marginTop="32pt"
+                android:layout_marginBottom="32pt"
+                android:text="保存"
+                android:textSize="16pt" />
+
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

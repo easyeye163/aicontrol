@@ -45,7 +45,19 @@
 
     </LinearLayout>
 
-    <!-- 底部控制栏 — 速度显示 -->
+    <!-- 设置按钮 — 右上角 -->
+    <ImageView
+        android:id="@+id/btnSettings"
+        android:layout_width="28pt"
+        android:layout_height="28pt"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="16pt"
+        android:layout_marginEnd="16pt"
+        android:src="@drawable/ic_settings"
+        android:padding="4pt"
+        app:tint="#64748b" />
+
+    <!-- 底部控制栏 — 速度显示 + 语音按钮 -->
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
@@ -83,6 +95,20 @@
             android:textColor="#475569"
             android:textSize="11sp" />
 
+        <!-- 语音控制按钮 -->
+        <TextView
+            android:id="@+id/btnVoice"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="20pt"
+            android:paddingHorizontal="12pt"
+            android:paddingVertical="4pt"
+            android:background="@drawable/bg_wifi_status_panel"
+            android:text="🎤 语音"
+            android:textColor="#94a3b8"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
     </LinearLayout>
 
     <!-- 核心控制区 — 三列布局 -->
@@ -106,8 +132,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:layout_gravity="center" />
-
-
 
         </FrameLayout>
 
@@ -144,8 +168,6 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:layout_gravity="center" />
-
-
 
         </FrameLayout>
 
