@@ -1280,8 +1280,9 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
 
     @Override // com.tzh.wifi.wificam.view.listener.IRudderListener
     public void onDirNotify(int i, int i2, int i3) {
+        // Swap left/right: rotateAction 1 (originally left) → send right, 2 (originally right) → send left
         if (i3 == 1) {
-            WiFiPresenter.getInstance(this).ICmd_DirNotify((byte) -1, (byte) i2);
+            WiFiPresenter.getInstance(this).ICmd_DirNotify((byte) 0, (byte) i2);
             if (this.bRotateActive) {
                 return;
             }
@@ -1291,7 +1292,7 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
             return;
         }
         if (i3 == 2) {
-            WiFiPresenter.getInstance(this).ICmd_DirNotify((byte) 0, (byte) i2);
+            WiFiPresenter.getInstance(this).ICmd_DirNotify((byte) -1, (byte) i2);
             if (this.bRotateActive) {
                 return;
             }
