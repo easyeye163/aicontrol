@@ -323,6 +323,9 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
             this.btnOneKeyFly = (ImageView) findViewById(R.id.btnPlayOneKeyFly);
             this.btnOneKeyLand = (ImageView) findViewById(R.id.btnPlayOneKeyLand);
             this.btnOneKeyStop = (ImageView) findViewById(R.id.btnMengencyStop);
+            ImageView ivPlayBack = (ImageView) findViewById(R.id.btnPlayBack);
+            ImageView ivCameraSwitch = (ImageView) findViewById(R.id.btnCameraSwitch);
+            ImageView ivPlayReturn = (ImageView) findViewById(R.id.btnPlayReturn);
             this.lyHeadSecond = (LinearLayout) findViewById(R.id.ly_head_second);
             this.lySliderBottom = (LinearLayout) findViewById(R.id.lySliderBottom);
             this.lySliderCenter = (RelativeLayout) findViewById(R.id.lySliderCenter);
@@ -362,6 +365,33 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
             this.img_voice_control.setImageResource(R.mipmap.voice_nor);
             this.btnCheckout = (ImageView) findViewById(R.id.btnPlayCheckout);
             Log.e(TAG, "=== initial icons DONE ===");
+            // Register click listeners for ALL buttons (was lost during decompilation)
+            if (ivPlayBack != null) ivPlayBack.setOnClickListener(this);
+            if (this.btnVrPlay != null) this.btnVrPlay.setOnClickListener(this);
+            if (ivCameraSwitch != null) ivCameraSwitch.setOnClickListener(this);
+            if (this.btnRotate != null) this.btnRotate.setOnClickListener(this);
+            if (this.btnChangeOrientation != null) this.btnChangeOrientation.setOnClickListener(this);
+            if (this.imusic != null) this.imusic.setOnClickListener(this);
+            if (this.btnMp3Switch != null) this.btnMp3Switch.setOnClickListener(this);
+            if (ivPlayReturn != null) ivPlayReturn.setOnClickListener(this);
+            if (this.btnRecord != null) this.btnRecord.setOnClickListener(this);
+            if (this.btnPhotoSnap != null) this.btnPhotoSnap.setOnClickListener(this);
+            if (this.btnSpeed != null) this.btnSpeed.setOnClickListener(this);
+            if (this.btnAutoPhoto != null) this.btnAutoPhoto.setOnClickListener(this);
+            if (this.btnLock != null) this.btnLock.setOnClickListener(this);
+            if (this.btnButton != null) this.btnButton.setOnClickListener(this);
+            if (this.img_filter_play != null) this.img_filter_play.setOnClickListener(this);
+            if (this.img_voice_control != null) this.img_voice_control.setOnClickListener(this);
+            if (this.btnReverse != null) this.btnReverse.setOnClickListener(this);
+            if (this.btnNoHead != null) this.btnNoHead.setOnClickListener(this);
+            if (this.btnAutoPath != null) this.btnAutoPath.setOnClickListener(this);
+            if (this.btnGensor != null) this.btnGensor.setOnClickListener(this);
+            if (this.btnStayHigh != null) this.btnStayHigh.setOnClickListener(this);
+            if (this.btnOneKeyFly != null) this.btnOneKeyFly.setOnClickListener(this);
+            if (this.btnOneKeyLand != null) this.btnOneKeyLand.setOnClickListener(this);
+            if (this.btnOneKeyStop != null) this.btnOneKeyStop.setOnClickListener(this);
+            if (this.btnCheckout != null) this.btnCheckout.setOnClickListener(this);
+            Log.e(TAG, "=== setOnClickListener DONE ===");
             // Default lock to ON so UI is fully visible
             if (!getApp().bLockClick) {
                 getApp().bLockClick = true;

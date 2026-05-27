@@ -194,94 +194,197 @@
         android:layout_gravity="center"
         android:visibility="gone" />
 
-    <!-- Right-side control buttons column -->
+    <!-- Right-side control buttons column with Chinese labels -->
     <LinearLayout
-        android:layout_width="50dp" android:layout_height="wrap_content"
+        android:layout_width="52dp" android:layout_height="wrap_content"
         android:layout_gravity="right|center_vertical"
-        android:layout_marginRight="10dp"
+        android:layout_marginRight="6dp"
         android:orientation="vertical"
-        android:gravity="center_horizontal"
-        android:dividerPadding="2dp"
-        android:showDividers="middle">
+        android:gravity="center_horizontal">
 
-        <ImageView android:id="@+id/btnPlayRecord"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="3dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/btnPlayRecord"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="录像" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnPlaySnap"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/btnPlaySnap"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="拍照" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnPlaySpeed"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/btnPlaySpeed"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="速度" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnPlayAutoPhoto"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/btnPlayAutoPhoto"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="连拍" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnPlayLock"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/btnPlayLock"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="锁定" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnPlayButton"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/btnPlayButton"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="更多" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/img_filter_play"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/img_filter_play"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="变焦" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/img_voice_control"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/img_voice_control"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="语音" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnPlayRev"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/btnPlayRev"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="翻转" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnPlayNoHead"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="3dp">
+            <ImageView android:id="@+id/btnPlayNoHead"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="无头" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
     </LinearLayout>
 
-    <!-- Left-side control buttons column -->
+    <!-- Left-side control buttons column with Chinese labels -->
     <LinearLayout
-        android:layout_width="50dp" android:layout_height="wrap_content"
+        android:layout_width="52dp" android:layout_height="wrap_content"
         android:layout_gravity="left|center_vertical"
-        android:layout_marginLeft="10dp"
+        android:layout_marginLeft="6dp"
         android:orientation="vertical"
-        android:gravity="center_horizontal"
-        android:dividerPadding="2dp"
-        android:showDividers="middle">
+        android:gravity="center_horizontal">
 
-        <ImageView android:id="@+id/btnPlayPath"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="3dp" android:paddingBottom="2dp"
+            android:visibility="gone">
+            <ImageView android:id="@+id/btnPlayPath"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="航迹" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnPlayGensor"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:id="@+id/btnGensorWrapper"
+            android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="3dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/btnPlayGensor"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="陀螺仪" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnPlayStayHigh"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/btnPlayStayHigh"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="定高" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnPlayOneKeyFly"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:id="@+id/btnOneKeyFlyWrapper"
+            android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/btnPlayOneKeyFly"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="起飞" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnPlayOneKeyLand"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:id="@+id/btnOneKeyLandWrapper"
+            android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/btnPlayOneKeyLand"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="降落" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnMengencyStop"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:id="@+id/btnMengencyStopWrapper"
+            android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="2dp">
+            <ImageView android:id="@+id/btnMengencyStop"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="急停" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
 
-        <ImageView android:id="@+id/btnPlayCheckout"
-            android:layout_width="44dp" android:layout_height="44dp"
-            android:padding="6dp" />
+        <LinearLayout android:layout_width="48dp" android:layout_height="wrap_content"
+            android:orientation="vertical" android:gravity="center_horizontal"
+            android:paddingTop="2dp" android:paddingBottom="3dp">
+            <ImageView android:id="@+id/btnPlayCheckout"
+                android:layout_width="30dp" android:layout_height="30dp"
+                android:padding="4dp" android:clickable="true" />
+            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:text="校准" android:textSize="9sp" android:textColor="#BBFFFFFF" />
+        </LinearLayout>
     </LinearLayout>
 
 </FrameLayout>
