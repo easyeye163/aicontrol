@@ -45,7 +45,7 @@ import com.aicontrol.android.aircam.utils.LocalUtil;
 import com.aicontrol.android.aircam.utils.LogUtils;
 import com.aicontrol.android.aircam.utils.PathUtils;
 import com.aicontrol.android.aircam.utils.StringUtils;
-import com.aicontrol.android.aircam.view.DisplayImage;
+// DisplayImage now using ImageView directly in XML to avoid ClassCastException
 import com.aicontrol.android.aircam.view.ZoomView;
 import com.aicontrol.android.aircam.view.base.ICaptureView;
 import com.aicontrol.android.aircam.view.listener.IRudderListener;
@@ -98,8 +98,8 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
     private SpeechRecognizerUtil speechRecognizerUtil;
     private Vibrator vibrator;
     private ZoomView zoomView;
-    private DisplayImage ivLeftImage = null;
-    private DisplayImage ivRightImage = null;
+    private ImageView ivLeftImage = null;
+    private ImageView ivRightImage = null;
     private ImageView btnVrPlay = null;
     private ImageView btnRecord = null;
     private ImageView btnPhotoSnap = null;
@@ -287,9 +287,9 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
         try {
             this.mBmpUtils = new BmpUtils(this, this);
             Log.e(TAG, "=== BmpUtils DONE ===");
-            this.ivLeftImage = (DisplayImage) findViewById(R.id.ivLeftImage);
+            this.ivLeftImage = (ImageView) findViewById(R.id.ivLeftImage);
             Log.e(TAG, "=== ivLeftImage DONE: " + this.ivLeftImage);
-            this.ivRightImage = (DisplayImage) findViewById(R.id.ivRightImage);
+            this.ivRightImage = (ImageView) findViewById(R.id.ivRightImage);
             this.btnVrPlay = (ImageView) findViewById(R.id.btnVrPlay);
             this.mRudder = (Rudder) findViewById(R.id.playRudder);
             Log.e(TAG, "=== mRudder DONE: " + this.mRudder);
@@ -1166,7 +1166,7 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
 
     @Override // com.tzh.wifi.wificam.view.base.ICaptureView
     public void reciveBitmap(int i, int i2, Bitmap bitmap) {
-        DisplayImage displayImage;
+        ImageView displayImage;
         this.bWiFiConnect = true;
         // Hide WiFi status overlay when camera connects
         final View wifiStatus = findViewById(R.id.lyWifiStatus);
