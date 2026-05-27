@@ -391,6 +391,16 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
             if (this.btnOneKeyLand != null) this.btnOneKeyLand.setOnClickListener(this);
             if (this.btnOneKeyStop != null) this.btnOneKeyStop.setOnClickListener(this);
             if (this.btnCheckout != null) this.btnCheckout.setOnClickListener(this);
+            // Drone config button
+            TextView btnDroneConfig = (TextView) findViewById(R.id.btnDroneConfig);
+            if (btnDroneConfig != null) {
+                btnDroneConfig.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        startActivity(new Intent(PlayActivity.this, DroneConfigActivity.class));
+                    }
+                });
+            }
             Log.e(TAG, "=== setOnClickListener DONE ===");
             // Default lock to ON so UI is fully visible
             if (!getApp().bLockClick) {
