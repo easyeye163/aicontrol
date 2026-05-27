@@ -202,48 +202,70 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
         }
     }
 
-    @Override // androidx.fragment.app.FragmentActivity, androidx.activity.ComponentActivity, androidx.core.app.ComponentActivity, android.app.Activity
+    private static final String TAG = "PlayActivity";
+
+    @Override
     protected void onCreate(Bundle bundle) {
-        super.onCreate(bundle);
-        this.connectivityManager = (ConnectivityManager) getSystemService("connectivity");
-        this.connectivityManager.bindProcessToNetwork(null);
-        initLanguage();
-        new PathUtils(this);
-        getWindow().addFlags(128);
-        setContentView(R.layout.activity_play);
-        DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
-        this.displayMetrics = displayMetrics;
-        this.screenWidth = displayMetrics.widthPixels;
-        this.screenHeight = this.displayMetrics.heightPixels;
-        this.vibrator = (Vibrator) getSystemService("vibrator");
-        this.speechRecognizerUtil = new SpeechRecognizerUtil(this, this);
-        this.mHandler = new SafeHandler(this);
-        this.mRecRunnable = new RecRunnable(this);
-        this.faceDectorRunnable = new FaceDectorRunnable(this);
-        this.handSnapDectorRunnable = new HandSnapDectorRunnable(this);
-        this.handRecordDectorRunnable = new HandRecordDectorRunnable(this);
-        this.resetRunnable = new ResetRunnable(this);
-        this.pathResetRunnable = new PathResetRunnable(this);
-        this.pathRunnable = new PathRunnable(this);
-        this.PathStartRunnable = new PathStartRunnable(this);
-        this.ScaleRunnable = new ScaleRunnable(this);
-        this.mCloseVoiceControl = new CloseVoiceControlRunnable(this);
-        if (path1 == null) {
-            path1 = PathUtils.getInstance(this).copyFilesFromAssets("hand.param");
-        }
-        if (path2 == null) {
-            path2 = PathUtils.getInstance(this).copyFilesFromAssets("hand.bin");
-        }
-        widget_init();
-        readConfig();
-        getWindow().getDecorView().post(new Runnable() { // from class: com.tzh.wifi.wificam.activity.PlayActivity.1
-            @Override // java.lang.Runnable
-            public void run() {
-                if (getApp().bLockClick) {
-                    WiFiPresenter.getInstance(PlayActivity.this).ICmd_Start();
-                }
+        try {
+            Log.e(TAG, "=== onCreate START ===");
+            super.onCreate(bundle);
+            Log.e(TAG, "=== super.onCreate DONE ===");
+            this.connectivityManager = (ConnectivityManager) getSystemService("connectivity");
+            this.connectivityManager.bindProcessToNetwork(null);
+            Log.e(TAG, "=== connectivityManager DONE ===");
+            initLanguage();
+            Log.e(TAG, "=== initLanguage DONE ===");
+            new PathUtils(this);
+            Log.e(TAG, "=== PathUtils DONE ===");
+            getWindow().addFlags(128);
+            setContentView(R.layout.activity_play);
+            Log.e(TAG, "=== setContentView DONE ===");
+            DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
+            this.displayMetrics = displayMetrics;
+            this.screenWidth = displayMetrics.widthPixels;
+            this.screenHeight = this.displayMetrics.heightPixels;
+            Log.e(TAG, "=== displayMetrics DONE ===");
+            this.vibrator = (Vibrator) getSystemService("vibrator");
+            Log.e(TAG, "=== vibrator DONE ===");
+            this.speechRecognizerUtil = new SpeechRecognizerUtil(this, this);
+            Log.e(TAG, "=== speechRecognizer DONE ===");
+            this.mHandler = new SafeHandler(this);
+            this.mRecRunnable = new RecRunnable(this);
+            this.faceDectorRunnable = new FaceDectorRunnable(this);
+            this.handSnapDectorRunnable = new HandSnapDectorRunnable(this);
+            this.handRecordDectorRunnable = new HandRecordDectorRunnable(this);
+            this.resetRunnable = new ResetRunnable(this);
+            this.pathResetRunnable = new PathResetRunnable(this);
+            this.pathRunnable = new PathRunnable(this);
+            this.PathStartRunnable = new PathStartRunnable(this);
+            this.ScaleRunnable = new ScaleRunnable(this);
+            this.mCloseVoiceControl = new CloseVoiceControlRunnable(this);
+            Log.e(TAG, "=== runnables DONE ===");
+            if (path1 == null) {
+                path1 = PathUtils.getInstance(this).copyFilesFromAssets("hand.param");
             }
-        });
+            if (path2 == null) {
+                path2 = PathUtils.getInstance(this).copyFilesFromAssets("hand.bin");
+            }
+            Log.e(TAG, "=== assets copy DONE ===");
+            widget_init();
+            Log.e(TAG, "=== widget_init DONE ===");
+            readConfig();
+            Log.e(TAG, "=== readConfig DONE ===");
+            getWindow().getDecorView().post(new Runnable() {
+                @Override
+                public void run() {
+                    if (getApp().bLockClick) {
+                        WiFiPresenter.getInstance(PlayActivity.this).ICmd_Start();
+                    }
+                }
+            });
+            Log.e(TAG, "=== onCreate SUCCESS ===");
+        } catch (Throwable t) {
+            Log.e(TAG, "=== onCreate CRASH ===", t);
+            t.printStackTrace();
+            Toast.makeText(this, "PlayActivity init error: " + t.getMessage(), Toast.LENGTH_LONG).show();
+        }
     }
 
     private void initLanguage() {
@@ -260,83 +282,99 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
     }
 
     private void widget_init() {
-        this.mBmpUtils = new BmpUtils(this, this);
-        this.ivLeftImage = (DisplayImage) findViewById(R.id.ivLeftImage);
-        this.ivRightImage = (DisplayImage) findViewById(R.id.ivRightImage);
-        this.btnVrPlay = (ImageView) findViewById(R.id.btnVrPlay);
-        this.mRudder = (Rudder) findViewById(R.id.playRudder);
-        this.tvScaleValue = (TextView) findViewById(R.id.tvScaleValue);
-        this.tvVoiceWord = (TextView) findViewById(R.id.tvVoiceWord);
-        this.leftSlider = (SliderHor) findViewById(R.id.playLeftSlider);
-        this.rightSlider = (SliderHor) findViewById(R.id.playRightSlider);
-        this.centerSlider = (SliderVer) findViewById(R.id.playCenterSlider);
-        ZoomView zoomView = (ZoomView) findViewById(R.id.lyZoomView);
-        this.zoomView = zoomView;
-        zoomView.setDelegate(this);
-        this.btnRecord = (ImageView) findViewById(R.id.btnPlayRecord);
-        this.btnPhotoSnap = (ImageView) findViewById(R.id.btnPlaySnap);
-        this.btnSpeed = (ImageView) findViewById(R.id.btnPlaySpeed);
-        this.btnVrPlay = (ImageView) findViewById(R.id.btnVrPlay);
-        this.btnAutoPhoto = (ImageView) findViewById(R.id.btnPlayAutoPhoto);
-        this.btnLock = (ImageView) findViewById(R.id.btnPlayLock);
-        this.btnButton = (ImageView) findViewById(R.id.btnPlayButton);
-        this.btnMp3Switch = (ImageView) findViewById(R.id.btnMp3Switch);
-        this.img_filter_play = (ImageView) findViewById(R.id.img_filter_play);
-        this.img_voice_control = (ImageView) findViewById(R.id.img_voice_control);
-        ImageView imageView = (ImageView) findViewById(R.id.btnPlayPath);
-        this.btnAutoPath = imageView;
-        imageView.setVisibility(8);
-        this.btnRotate = (ImageView) findViewById(R.id.btnPlayRoate);
-        this.btnGensor = (ImageView) findViewById(R.id.btnPlayGensor);
-        this.btnStayHigh = (ImageView) findViewById(R.id.btnPlayStayHigh);
-        this.btnOneKeyFly = (ImageView) findViewById(R.id.btnPlayOneKeyFly);
-        this.btnOneKeyLand = (ImageView) findViewById(R.id.btnPlayOneKeyLand);
-        this.btnOneKeyStop = (ImageView) findViewById(R.id.btnMengencyStop);
-        this.lyHeadSecond = (LinearLayout) findViewById(R.id.ly_head_second);
-        this.lySliderBottom = (LinearLayout) findViewById(R.id.lySliderBottom);
-        this.lySliderCenter = (RelativeLayout) findViewById(R.id.lySliderCenter);
-        this.lyMengencyStop = (RelativeLayout) findViewById(R.id.lyMengencyStop);
-        this.lyRecordTime = (LinearLayout) findViewById(R.id.ly_record_time);
-        this.ivRecordIcon = (ImageView) findViewById(R.id.ivRecordIcon);
-        this.tvRecordTime = (TextView) findViewById(R.id.tvRecordTime);
-        this.tvAutoPhoto = (TextView) findViewById(R.id.tvAutoPhoto);
-        this.lyRecordTime.setVisibility(4);
-        this.ivLoading = (ImageView) findViewById(R.id.ivLoading);
-        this.ivRoundMove = (ImageView) findViewById(R.id.ivRoundMove);
-        this.btnReverse = (ImageView) findViewById(R.id.btnPlayRev);
-        this.imusic = (ImageView) findViewById(R.id.img_video_mp3);
-        this.btnNoHead = (ImageView) findViewById(R.id.btnPlayNoHead);
-        this.btnChangeOrientation = (ImageView) findViewById(R.id.btnChangeOrientation);
-        this.leftSlider.addSliderListener(this, ConfigUtils.getLeftTune(this));
-        this.rightSlider.addSliderListener(this, ConfigUtils.getRightTune(this));
-        this.centerSlider.addSliderListener(this, ConfigUtils.getCenterTune(this));
-        this.mRudder.registerListener(this);
-        this.mRudder.invalidateValue();
-        if (!getApp().bLockClick) {
-            this.btnLock.setImageResource(R.mipmap.play_lock_icon);
-            play_lock_click_up();
-        } else {
-            play_lock_click_down();
-            this.btnLock.setImageResource(R.mipmap.play_lock_icon_down);
-        }
-        if (getApp().bButtonClick) {
-            this.btnButton.setImageResource(R.mipmap.play_button_icon_down);
-            play_button_click_down();
-        } else {
-            this.btnButton.setImageResource(R.mipmap.play_button_icon);
-            play_button_click_up();
-        }
-        if (getApp().nSpeed == 0) {
-            this.btnSpeed.setImageResource(R.mipmap.play_speed_1_icon);
-        } else if (getApp().nSpeed == 1) {
-            this.btnSpeed.setImageResource(R.mipmap.play_speed_2_icon);
-        } else if (getApp().nSpeed == 2) {
-            this.btnSpeed.setImageResource(R.mipmap.play_speed_3_icon);
-        }
-        if (getApp().bfilter_playClick) {
-            play_filter_click_down();
-        } else {
-            play_filter_click_up();
+        Log.e(TAG, "=== widget_init START ===");
+        try {
+            this.mBmpUtils = new BmpUtils(this, this);
+            Log.e(TAG, "=== BmpUtils DONE ===");
+            this.ivLeftImage = (DisplayImage) findViewById(R.id.ivLeftImage);
+            Log.e(TAG, "=== ivLeftImage DONE: " + this.ivLeftImage);
+            this.ivRightImage = (DisplayImage) findViewById(R.id.ivRightImage);
+            this.btnVrPlay = (ImageView) findViewById(R.id.btnVrPlay);
+            this.mRudder = (Rudder) findViewById(R.id.playRudder);
+            Log.e(TAG, "=== mRudder DONE: " + this.mRudder);
+            this.tvScaleValue = (TextView) findViewById(R.id.tvScaleValue);
+            this.tvVoiceWord = (TextView) findViewById(R.id.tvVoiceWord);
+            this.leftSlider = (SliderHor) findViewById(R.id.playLeftSlider);
+            Log.e(TAG, "=== leftSlider DONE: " + this.leftSlider);
+            this.rightSlider = (SliderHor) findViewById(R.id.playRightSlider);
+            this.centerSlider = (SliderVer) findViewById(R.id.playCenterSlider);
+            Log.e(TAG, "=== centerSlider DONE: " + this.centerSlider);
+            ZoomView zoomView = (ZoomView) findViewById(R.id.lyZoomView);
+            Log.e(TAG, "=== zoomView DONE: " + zoomView);
+            this.zoomView = zoomView;
+            zoomView.setDelegate(this);
+            this.btnRecord = (ImageView) findViewById(R.id.btnPlayRecord);
+            this.btnPhotoSnap = (ImageView) findViewById(R.id.btnPlaySnap);
+            this.btnSpeed = (ImageView) findViewById(R.id.btnPlaySpeed);
+            this.btnVrPlay = (ImageView) findViewById(R.id.btnVrPlay);
+            this.btnAutoPhoto = (ImageView) findViewById(R.id.btnPlayAutoPhoto);
+            this.btnLock = (ImageView) findViewById(R.id.btnPlayLock);
+            this.btnButton = (ImageView) findViewById(R.id.btnPlayButton);
+            this.btnMp3Switch = (ImageView) findViewById(R.id.btnMp3Switch);
+            this.img_filter_play = (ImageView) findViewById(R.id.img_filter_play);
+            this.img_voice_control = (ImageView) findViewById(R.id.img_voice_control);
+            ImageView imageView = (ImageView) findViewById(R.id.btnPlayPath);
+            this.btnAutoPath = imageView;
+            imageView.setVisibility(8);
+            this.btnRotate = (ImageView) findViewById(R.id.btnPlayRoate);
+            this.btnGensor = (ImageView) findViewById(R.id.btnPlayGensor);
+            this.btnStayHigh = (ImageView) findViewById(R.id.btnPlayStayHigh);
+            this.btnOneKeyFly = (ImageView) findViewById(R.id.btnPlayOneKeyFly);
+            this.btnOneKeyLand = (ImageView) findViewById(R.id.btnPlayOneKeyLand);
+            this.btnOneKeyStop = (ImageView) findViewById(R.id.btnMengencyStop);
+            this.lyHeadSecond = (LinearLayout) findViewById(R.id.ly_head_second);
+            this.lySliderBottom = (LinearLayout) findViewById(R.id.lySliderBottom);
+            this.lySliderCenter = (RelativeLayout) findViewById(R.id.lySliderCenter);
+            this.lyMengencyStop = (RelativeLayout) findViewById(R.id.lyMengencyStop);
+            this.lyRecordTime = (LinearLayout) findViewById(R.id.ly_record_time);
+            this.ivRecordIcon = (ImageView) findViewById(R.id.ivRecordIcon);
+            this.tvRecordTime = (TextView) findViewById(R.id.tvRecordTime);
+            this.tvAutoPhoto = (TextView) findViewById(R.id.tvAutoPhoto);
+            this.lyRecordTime.setVisibility(4);
+            this.ivLoading = (ImageView) findViewById(R.id.ivLoading);
+            this.ivRoundMove = (ImageView) findViewById(R.id.ivRoundMove);
+            this.btnReverse = (ImageView) findViewById(R.id.btnPlayRev);
+            this.imusic = (ImageView) findViewById(R.id.img_video_mp3);
+            this.btnNoHead = (ImageView) findViewById(R.id.btnPlayNoHead);
+            this.btnChangeOrientation = (ImageView) findViewById(R.id.btnChangeOrientation);
+            Log.e(TAG, "=== all findViewById DONE ===");
+            this.leftSlider.addSliderListener(this, ConfigUtils.getLeftTune(this));
+            this.rightSlider.addSliderListener(this, ConfigUtils.getRightTune(this));
+            this.centerSlider.addSliderListener(this, ConfigUtils.getCenterTune(this));
+            Log.e(TAG, "=== slider listeners DONE ===");
+            this.mRudder.registerListener(this);
+            this.mRudder.invalidateValue();
+            Log.e(TAG, "=== rudder DONE ===");
+            if (!getApp().bLockClick) {
+                this.btnLock.setImageResource(R.mipmap.play_lock_icon);
+                play_lock_click_up();
+            } else {
+                play_lock_click_down();
+                this.btnLock.setImageResource(R.mipmap.play_lock_icon_down);
+            }
+            if (getApp().bButtonClick) {
+                this.btnButton.setImageResource(R.mipmap.play_button_icon_down);
+                play_button_click_down();
+            } else {
+                this.btnButton.setImageResource(R.mipmap.play_button_icon);
+                play_button_click_up();
+            }
+            if (getApp().nSpeed == 0) {
+                this.btnSpeed.setImageResource(R.mipmap.play_speed_1_icon);
+            } else if (getApp().nSpeed == 1) {
+                this.btnSpeed.setImageResource(R.mipmap.play_speed_2_icon);
+            } else if (getApp().nSpeed == 2) {
+                this.btnSpeed.setImageResource(R.mipmap.play_speed_3_icon);
+            }
+            if (getApp().bfilter_playClick) {
+                play_filter_click_down();
+            } else {
+                play_filter_click_up();
+            }
+            Log.e(TAG, "=== widget_init SUCCESS ===");
+        } catch (Throwable t) {
+            Log.e(TAG, "=== widget_init CRASH ===", t);
+            t.printStackTrace();
         }
     }
 

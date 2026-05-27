@@ -36,6 +36,8 @@ public class ZoomView extends View {
 
     public ZoomView(Context context, AttributeSet attributeSet) {
         super(context, attributeSet);
+        this.logUtils = LogUtils.setLogger(ZoomView.class);
+        this.logUtils.e("=== ZoomView constructor START ===");
         this.mPaint = new Paint();
         this.logUtils = LogUtils.setLogger(ZoomView.class);
         this.width = 0;

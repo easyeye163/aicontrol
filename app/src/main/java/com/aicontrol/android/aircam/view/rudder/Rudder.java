@@ -62,6 +62,7 @@ public class Rudder extends SurfaceView implements SurfaceHolder.Callback, Runna
 
     public Rudder(Context context, AttributeSet attributeSet) {
         super(context, attributeSet);
+        Log.e(TAG, "=== Rudder constructor START ===");
         this.logUtils = LogUtils.setLogger(Rudder.class);
         this.renderThread = null;
         this.isRunning = false;
