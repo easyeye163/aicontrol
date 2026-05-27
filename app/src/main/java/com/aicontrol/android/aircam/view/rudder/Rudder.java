@@ -91,7 +91,8 @@ public class Rudder extends SurfaceView implements SurfaceHolder.Callback, Runna
         this.surfaceHolder = holder;
         holder.addCallback(this);
         this.surfaceHolder.setFormat(-2);
-        setZOrderOnTop(true);
+        // Do NOT use setZOrderOnTop - it creates a separate window layer above all views,
+        // preventing buttons from receiving touch events.
         setFocusable(true);
         setFocusableInTouchMode(true);
         Paint paint = new Paint();
@@ -331,13 +332,41 @@ public class Rudder extends SurfaceView implements SurfaceHolder.Callback, Runna
         canvas.restore();
     }
 
+    /**
+     * Check if the touch point is inside a UI button area (header bar, left/right button columns).
+     * If so, the rudder should NOT consume the event so buttons can receive it.
+     */
+    private boolean isInButtonArea(float x, float y) {
+        float density = getResources().getDisplayMetrics().density;
+        // Top header bar: 50dp high, full width
+        float headerH = 50f * density;
+        if (y < headerH) {
+            return true;
+        }
+        // Right button column: marginRight=10dp, width=50dp
+        float rightStart = this.screenWidth - (10f + 50f) * density;
+        if (x > rightStart) {
+            return true;
+        }
+        // Left button column: marginLeft=10dp, width=50dp
+        float leftEnd = (10f + 50f) * density;
+        if (x < leftEnd) {
+            return true;
+        }
+        return false;
+    }
+
     @Override // android.view.View
     public boolean onTouchEvent(android.view.MotionEvent event) {
         int action = event.getActionMasked();
         if (action == android.view.MotionEvent.ACTION_DOWN) {
-            int pid = event.getPointerId(0);
             float x = event.getX();
             float y = event.getY();
+            // If touch is in button area, let it pass through to underlying views
+            if (isInButtonArea(x, y)) {
+                return false;
+            }
+            int pid = event.getPointerId(0);
             if (this.ctrlMode == 0) {
                 if (x < this.screenWidth / 2) {
                     this.leftJoystick.pointerId = pid;
