@@ -8,10 +8,8 @@ import android.os.Handler;
 import android.os.Message;
 import com.aicontrol.android.aircam.model.face.FaceDector;
 import com.aicontrol.android.aircam.model.listener.INativeListener;
-import com.aicontrol.android.aircam.utils.LogUtils;
 import com.aicontrol.android.aircam.model.yuan.IData;
 
-/* loaded from: classes5.dex */
 public class Camera {
     private static final int CAMERA_TYPE = 3;
     private static final int WIFI_NOTIFY_PIC = 0;
@@ -35,79 +33,48 @@ public class Camera {
     private static int resolution = 0;
     private static int iretain = 0;
 
-    public static native void iCameraCloseFile();
-
-    public static final native void iCameraDeinit();
-
-    public static final native int iCameraEncodeStart(String str, int i);
-
-    public static final native int iCameraEncodeStop();
-
-    public static native byte[] iCameraGetOneFrame(int i);
-
-    public static native byte[] iCameraGetOneSecond(double d);
-
-    public static native int iCameraGetTotalFrame();
-
-    public static native double iCameraGetTotalTime();
-
-    public static final native int iCameraInit();
-
-    public static native void iCameraOpenFile(String str);
-
-    public static final native int iCameraRecSetParams(int i, int i2, int i3);
-
-    public static final native int iCameraRecStart(String str);
-
-    public static final native void iCameraRecStop();
-
-    public static final native int iCameraRecWrite(byte[] bArr, int i);
-
-    public static final native int iCameraRoate();
-
-    public static final native int iCameraSetMode(int i);
-
-    public static final native int iCameraStart();
-
-    public static final native void iCameraStop();
-
-    public static final native int iCameraSwitch();
-
-    public static final native int iCameraWritePic(byte[] bArr, int i);
-
-    public static final native void iCmdResume();
-
-    public static final native int iCmdSend(byte[] bArr, int i);
-
-    public static final native int iCmdStart();
-
-    public static final native void iCmdStop();
-
-    public static native int iYuanInit(int i, int i2, int i3, int i4, int i5, int i6, int i7, String str, String str2, int i8, int i9);
-
-    public static native int iYuanProc(byte[] bArr, int i, int i2);
-
-    public static native int iYuanRelease();
-
-    public static final native int isEncodingVadio();
-
-    public static native void stop_music();
+    // === Native method bridges - delegate to com.tzh.wifi.utils.Camera ===
+    public static void iCameraCloseFile() { com.tzh.wifi.utils.Camera.iCameraCloseFile(); }
+    public static void iCameraDeinit() { com.tzh.wifi.utils.Camera.iCameraDeinit(); }
+    public static int iCameraEncodeStart(String str, int i) { return com.tzh.wifi.utils.Camera.iCameraEncodeStart(str, i); }
+    public static int iCameraEncodeStop() { return com.tzh.wifi.utils.Camera.iCameraEncodeStop(); }
+    public static byte[] iCameraGetOneFrame(int i) { return com.tzh.wifi.utils.Camera.iCameraGetOneFrame(i); }
+    public static byte[] iCameraGetOneSecond(double d) { return com.tzh.wifi.utils.Camera.iCameraGetOneSecond(d); }
+    public static int iCameraGetTotalFrame() { return com.tzh.wifi.utils.Camera.iCameraGetTotalFrame(); }
+    public static double iCameraGetTotalTime() { return com.tzh.wifi.utils.Camera.iCameraGetTotalTime(); }
+    public static int iCameraInit() { return com.tzh.wifi.utils.Camera.iCameraInit(); }
+    public static void iCameraOpenFile(String str) { com.tzh.wifi.utils.Camera.iCameraOpenFile(str); }
+    public static int iCameraRecSetParams(int i, int i2, int i3) { return com.tzh.wifi.utils.Camera.iCameraRecSetParams(i, i2, i3); }
+    public static int iCameraRecStart(String str) { return com.tzh.wifi.utils.Camera.iCameraRecStart(str); }
+    public static void iCameraRecStop() { com.tzh.wifi.utils.Camera.iCameraRecStop(); }
+    public static int iCameraRecWrite(byte[] bArr, int i) { return com.tzh.wifi.utils.Camera.iCameraRecWrite(bArr, i); }
+    public static int iCameraRoate() { return com.tzh.wifi.utils.Camera.iCameraRoate(); }
+    public static int iCameraSetMode(int i) { return com.tzh.wifi.utils.Camera.iCameraSetMode(i); }
+    public static int iCameraStart() { return com.tzh.wifi.utils.Camera.iCameraStart(); }
+    public static void iCameraStop() { com.tzh.wifi.utils.Camera.iCameraStop(); }
+    public static int iCameraSwitch() { return com.tzh.wifi.utils.Camera.iCameraSwitch(); }
+    public static int iCameraWritePic(byte[] bArr, int i) { return com.tzh.wifi.utils.Camera.iCameraWritePic(bArr, i); }
+    public static void iCmdResume() { com.tzh.wifi.utils.Camera.iCmdResume(); }
+    public static int iCmdSend(byte[] bArr, int i) { return com.tzh.wifi.utils.Camera.iCmdSend(bArr, i); }
+    public static int iCmdStart() { return com.tzh.wifi.utils.Camera.iCmdStart(); }
+    public static void iCmdStop() { com.tzh.wifi.utils.Camera.iCmdStop(); }
+    public static int iYuanInit(int i, int i2, int i3, int i4, int i5, int i6, int i7, String str, String str2, int i8, int i9) { return com.tzh.wifi.utils.Camera.iYuanInit(i, i2, i3, i4, i5, i6, i7, str, str2, i8, i9); }
+    public static int iYuanProc(byte[] bArr, int i, int i2) { return com.tzh.wifi.utils.Camera.iYuanProc(bArr, i, i2); }
+    public static int iYuanRelease() { return com.tzh.wifi.utils.Camera.iYuanRelease(); }
+    public static int isEncodingVadio() { return com.tzh.wifi.utils.Camera.isEncodingVadio(); }
+    public static void stop_music() { com.tzh.wifi.utils.Camera.stop_music(); }
 
     static {
-        System.loadLibrary("Camera");
-        System.loadLibrary("yuv");
-        System.loadLibrary("jpeg");
-        System.loadLibrary("turbojpeg");
-        System.loadLibrary("avcodec");
-        System.loadLibrary("avfilter");
-        System.loadLibrary("avformat");
-        System.loadLibrary("avutil");
-        System.loadLibrary("swresample");
-        System.loadLibrary("swscale");
-        System.loadLibrary("avdevice");
-        System.loadLibrary("c++_shared");
-        mHandler = new Handler() { // from class: com.tzh.wifi.utils.Camera.1
-            @Override // android.os.Handler
+        try {
+            // Force-load the JNI bridge class which loads all native libraries
+            Class.forName("com.tzh.wifi.utils.Camera");
+            logUtils.e("=== JNI bridge loaded OK ===");
+        } catch (Throwable t) {
+            logUtils.e("=== JNI bridge load FAILED ===");
+            t.printStackTrace();
+        }
+        mHandler = new Handler() {
+            @Override
             public void handleMessage(Message message) {
                 super.handleMessage(message);
                 int i = message.arg1;
