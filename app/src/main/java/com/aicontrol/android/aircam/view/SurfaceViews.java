@@ -50,6 +50,9 @@ public class SurfaceViews extends SurfaceView implements SurfaceHolder.Callback 
         this.rect = new Rect(0, 0, getWidth(), getHeight());
         Log.e(TAG, "width " + getWidth() + " height " + getHeight());
         this.mBitmap = BitmapFactory.decodeResource(getResources(), R.mipmap.play_bg_icon);
+        if (this.mBitmap == null) {
+            this.mBitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888);
+        }
     }
 
     public void setRotateAngle(int i) {
@@ -90,6 +93,9 @@ public class SurfaceViews extends SurfaceView implements SurfaceHolder.Callback 
 
     public void disconnect() {
         Bitmap decodeResource = BitmapFactory.decodeResource(getResources(), R.mipmap.play_bg_icon);
+        if (decodeResource == null) {
+            decodeResource = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888);
+        }
         this.mBitmap = decodeResource;
         SetBitmap(decodeResource);
     }

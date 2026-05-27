@@ -50,7 +50,13 @@ public class ZoomView extends View {
         this.lineHeight = 0;
         this.roundR = 0;
         this.mSliderBar = BitmapFactory.decodeResource(getResources(), R.mipmap.play_slider_portrait_bar);
+        if (this.mSliderBar == null) {
+            this.mSliderBar = Bitmap.createBitmap(20, 300, Bitmap.Config.ARGB_8888);
+        }
         this.mThumb = BitmapFactory.decodeResource(getResources(), R.mipmap.play_slider_portrait_thumb_icon);
+        if (this.mThumb == null) {
+            this.mThumb = Bitmap.createBitmap(40, 40, Bitmap.Config.ARGB_8888);
+        }
         this.lineWidth = (int) getResources().getDimension(R.dimen.y15);
         this.lineHeight = (int) getResources().getDimension(R.dimen.y350);
         this.roundR = (int) getResources().getDimension(R.dimen.y21);

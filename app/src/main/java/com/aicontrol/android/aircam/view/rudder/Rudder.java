@@ -114,6 +114,10 @@ public class Rudder extends SurfaceView implements SurfaceHolder.Callback, Runna
     private void initResourcesAndLayout() {
         boolean isLandscape = isLandscape();
         Bitmap decodeResource = BitmapFactory.decodeResource(getResources(), this.config.thumbResId);
+        if (decodeResource == null) {
+            this.logUtils.e("### thumbResId bitmap null, creating fallback");
+            decodeResource = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888);
+        }
         Resources resources = getResources();
         RudderConfig rudderConfig = this.config;
         float dimension = resources.getDimension(isLandscape ? rudderConfig.thumbSizeLandRes : rudderConfig.thumbSizePortRes) / decodeResource.getWidth();
@@ -123,6 +127,10 @@ public class Rudder extends SurfaceView implements SurfaceHolder.Callback, Runna
         this.thumbBitmap = createBitmap;
         this.bmpWidth = createBitmap.getWidth() / 2;
         Bitmap decodeResource2 = BitmapFactory.decodeResource(getResources(), this.config.bgResId);
+        if (decodeResource2 == null) {
+            this.logUtils.e("### bgResId bitmap null, creating fallback");
+            decodeResource2 = Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888);
+        }
         Resources resources2 = getResources();
         RudderConfig rudderConfig2 = this.config;
         float dimension2 = resources2.getDimension(isLandscape ? rudderConfig2.bgSizeLandRes : rudderConfig2.bgSizePortRes);
