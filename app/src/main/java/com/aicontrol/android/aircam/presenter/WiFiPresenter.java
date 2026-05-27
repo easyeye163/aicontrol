@@ -162,25 +162,19 @@ public class WiFiPresenter implements IPresenter, IModelCallBack, IData {
         }
     }
 
-    /* JADX WARN: Code restructure failed: missing block: B:32:0x006f, code lost:
-    
-        if (r19.srcHeight == 720) goto L15;
-     */
-    /* JADX WARN: Removed duplicated region for block: B:12:0x00a3 A[Catch: IOException -> 0x00f8, TryCatch #0 {IOException -> 0x00f8, blocks: (B:3:0x0011, B:5:0x0041, B:7:0x0045, B:10:0x0071, B:12:0x00a3, B:13:0x00ac, B:15:0x00b3, B:18:0x00bb, B:20:0x00c5, B:21:0x00cc, B:29:0x004c, B:31:0x006d), top: B:2:0x0011 }] */
-    /* JADX WARN: Removed duplicated region for block: B:15:0x00b3 A[Catch: IOException -> 0x00f8, TryCatch #0 {IOException -> 0x00f8, blocks: (B:3:0x0011, B:5:0x0041, B:7:0x0045, B:10:0x0071, B:12:0x00a3, B:13:0x00ac, B:15:0x00b3, B:18:0x00bb, B:20:0x00c5, B:21:0x00cc, B:29:0x004c, B:31:0x006d), top: B:2:0x0011 }] */
-    /* JADX WARN: Removed duplicated region for block: B:20:0x00c5 A[Catch: IOException -> 0x00f8, TryCatch #0 {IOException -> 0x00f8, blocks: (B:3:0x0011, B:5:0x0041, B:7:0x0045, B:10:0x0071, B:12:0x00a3, B:13:0x00ac, B:15:0x00b3, B:18:0x00bb, B:20:0x00c5, B:21:0x00cc, B:29:0x004c, B:31:0x006d), top: B:2:0x0011 }] */
-    /* JADX WARN: Removed duplicated region for block: B:25:0x00ca  */
-    /* JADX WARN: Removed duplicated region for block: B:27:0x00ab  */
-    /*
-        Code decompiled incorrectly, please refer to instructions dump.
-        To view partially-correct add '--show-bad-code' argument
-    */
-    public void prepareRecord(boolean r20) {
-        /*
-            Method dump skipped, instructions count: 253
-            To view this dump add '--comments-level debug' option
-        */
-        throw new UnsupportedOperationException("Method not decompiled: com.tzh.wifi.wificam.presenter.WiFiPresenter.prepareRecord(boolean):void");
+    public void prepareRecord(boolean newFile) {
+        try {
+            String dateStr = getDateStr("yyyy-MM-dd-HH-mm-ss");
+            File dir = this.mPathUtils.vrFile;
+            if (dir != null && !dir.exists()) {
+                dir.mkdirs();
+            }
+            this.videoPath = dir.getAbsolutePath() + "/" + dateStr + ".mp4";
+            startYuanRecord(this.resolution);
+        } catch (Exception e) {
+            this.logUtils.e("prepareRecord error: " + e.getMessage());
+            e.printStackTrace();
+        }
     }
 
     public void stopRecord() {

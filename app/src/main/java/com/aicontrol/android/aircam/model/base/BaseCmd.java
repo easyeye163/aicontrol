@@ -420,81 +420,54 @@ public class BaseCmd implements Runnable {
         }
     }
 
-    /* JADX WARN: Code restructure failed: missing block: B:4:0x000e, code lost:
-    
-        if (r3 >= 255) goto L12;
-     */
-    /*
-        Code decompiled incorrectly, please refer to instructions dump.
-        To view partially-correct add '--show-bad-code' argument
-    */
-    public byte dealWithYawValue(byte r3) {
-        /*
-            r2 = this;
-            int r3 = r2.IBaseCmd_Byte2Int(r3)
-            int r0 = r2.leftHVal
-            int r1 = r2.lastLeftHVal
-            if (r0 <= r1) goto L11
-            int r0 = r0 - r1
-            int r3 = r3 + r0
-            r0 = 255(0xff, float:3.57E-43)
-            if (r3 < r0) goto L18
-            goto L19
-        L11:
-            int r1 = r1 - r0
-            if (r3 > r1) goto L16
-            r0 = 0
-            goto L19
-        L16:
-            byte r0 = (byte) r1
-            int r3 = r3 - r0
-        L18:
-            byte r0 = (byte) r3
-        L19:
-            byte r3 = (byte) r0
-            byte r3 = r2.IBaseCmd_RightData(r3)
-            return r3
-        */
-        throw new UnsupportedOperationException("Method not decompiled: com.tzh.wifi.wificam.model.base.BaseCmd.dealWithYawValue(byte):byte");
+    public byte dealWithYawValue(byte value) {
+        int val = IBaseCmd_Byte2Int(value);
+        int trim = this.leftHVal;
+        int lastTrim = this.lastLeftHVal;
+        int result;
+        if (trim > lastTrim) {
+            // trim increased: add delta
+            result = val + (trim - lastTrim);
+            if (result >= 255) {
+                result = -1; // 0xFF as signed byte
+            } else {
+                result = (byte) result;
+            }
+        } else {
+            // trim decreased: subtract delta
+            int delta = lastTrim - trim;
+            if (val > delta) {
+                result = val - (byte) delta;
+            } else {
+                result = 0;
+            }
+        }
+        return IBaseCmd_RightData((byte) result);
     }
 
-    /* JADX WARN: Code restructure failed: missing block: B:4:0x000e, code lost:
-    
-        if (r3 >= 255) goto L12;
-     */
-    /*
-        Code decompiled incorrectly, please refer to instructions dump.
-        To view partially-correct add '--show-bad-code' argument
-    */
-    public byte dealWithRollValue(byte r3) {
-        /*
-            r2 = this;
-            int r3 = r2.IBaseCmd_Byte2Int(r3)
-            int r0 = r2.rightHVal
-            int r1 = r2.lastRightHVal
-            if (r0 <= r1) goto L11
-            int r0 = r0 - r1
-            int r3 = r3 + r0
-            r0 = 255(0xff, float:3.57E-43)
-            if (r3 < r0) goto L1a
-            goto L1b
-        L11:
-            int r1 = r1 - r0
-            int r0 = r3 - r1
-            if (r0 > 0) goto L18
-            r0 = 0
-            goto L1b
-        L18:
-            byte r0 = (byte) r1
-            int r3 = r3 - r0
-        L1a:
-            byte r0 = (byte) r3
-        L1b:
-            byte r3 = (byte) r0
-            byte r3 = r2.IBaseCmd_RightData(r3)
-            return r3
-        */
-        throw new UnsupportedOperationException("Method not decompiled: com.tzh.wifi.wificam.model.base.BaseCmd.dealWithRollValue(byte):byte");
+    public byte dealWithRollValue(byte value) {
+        int val = IBaseCmd_Byte2Int(value);
+        int trim = this.rightHVal;
+        int lastTrim = this.lastRightHVal;
+        int result;
+        if (trim > lastTrim) {
+            // trim increased: add delta
+            result = val + (trim - lastTrim);
+            if (result >= 255) {
+                result = -1; // 0xFF as signed byte
+            } else {
+                result = (byte) result;
+            }
+        } else {
+            // trim decreased: subtract delta
+            int delta = lastTrim - trim;
+            if (val - delta > 0) {
+                result = val - (byte) delta;
+            } else {
+                result = 0;
+            }
+        }
+        return IBaseCmd_RightData((byte) result);
     }
 
     public byte dealWithPitchValue(byte b) {

@@ -30,28 +30,27 @@ public class MusicUtils {
         }
     }
 
-    /* JADX WARN: Code restructure failed: missing block: B:31:0x0142, code lost:
-    
-        android.util.Log.d("MusicUtils", "Total music loaded: " + r11.list.size());
-     */
-    /* JADX WARN: Code restructure failed: missing block: B:32:0x015b, code lost:
-    
-        return r11.list;
-     */
-    /* JADX WARN: Code restructure failed: missing block: B:41:0x013f, code lost:
-    
-        if (0 == 0) goto L30;
-     */
-    /*
-        Code decompiled incorrectly, please refer to instructions dump.
-        To view partially-correct add '--show-bad-code' argument
-    */
-    public java.util.List<Music> getMusic() {
-        /*
-            Method dump skipped, instructions count: 354
-            To view this dump add '--comments-level debug' option
-        */
-        throw new UnsupportedOperationException("Method not decompiled: com.tzh.wifi.wificam.utils.MusicUtils.getMusic():java.util.List");
+    public List<Music> getMusic() {
+        List<Music> musicList = new ArrayList<>();
+        try {
+            String[] files = this.mContext.getAssets().list("musics");
+            if (files != null) {
+                for (String file : files) {
+                    if (file.endsWith(".mp3") || file.endsWith(".ogg") || file.endsWith(".wav") || file.endsWith(".m4a")) {
+                        String name = file.replace(".mp3", "").replace(".ogg", "").replace(".wav", "").replace(".m4a", "");
+                        Music music = new Music();
+                        music.setSong(name);
+                        music.setPath("musics/" + file);
+                        musicList.add(music);
+                    }
+                }
+            }
+            this.list = musicList;
+            android.util.Log.d("MusicUtils", "Total music loaded: " + this.list.size());
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return musicList;
     }
 
     public void play(String str) {

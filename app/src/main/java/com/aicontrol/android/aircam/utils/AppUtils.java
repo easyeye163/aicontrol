@@ -18,7 +18,13 @@ import android.util.DisplayMetrics;
 import android.view.Window;
 import android.view.WindowManager;
 import com.aicontrol.android.aircam.model.yuan.FileUtils;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.media.MediaMetadataRetriever;
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileReader;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -448,7 +454,23 @@ public class AppUtils implements IConstants {
     }
 
     public static boolean getRecordVideoThumb(FileInfo fileInfo, String str) {
-        throw new UnsupportedOperationException("Method not decompiled: com.cooingdv.fhdfpv.utils.AppUtils.getRecordVideoThumb(com.cooingdv.fhdfpv.beans.FileInfo, java.lang.String):boolean");
+        try {
+            MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+            retriever.setDataSource(fileInfo.getPath());
+            Bitmap bitmap = retriever.getFrameAtTime(0);
+            if (bitmap != null) {
+                FileOutputStream fos = new FileOutputStream(str);
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 80, fos);
+                fos.close();
+                bitmap.recycle();
+                retriever.release();
+                return true;
+            }
+            retriever.release();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return false;
     }
 
     public static Locale getLanguage(int i) {
@@ -536,7 +558,18 @@ public class AppUtils implements IConstants {
     }
 
     public static boolean bytesToFile(byte[] bArr, String str) {
-        throw new UnsupportedOperationException("Method not decompiled: com.cooingdv.fhdfpv.utils.AppUtils.bytesToFile(byte[], java.lang.String):boolean");
+        try {
+            File file = new File(str);
+            File parent = file.getParentFile();
+            if (parent != null && !parent.exists()) parent.mkdirs();
+            FileOutputStream fos = new FileOutputStream(file);
+            fos.write(bArr);
+            fos.close();
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     public static int checkFrameType(byte[] bArr) {
@@ -632,7 +665,18 @@ public class AppUtils implements IConstants {
     }
 
     public static boolean bitmapToFile(Bitmap bitmap, String str, int i) {
-        throw new UnsupportedOperationException("Method not decompiled: com.cooingdv.fhdfpv.utils.AppUtils.bitmapToFile(android.graphics.Bitmap, java.lang.String, int):boolean");
+        try {
+            File file = new File(str);
+            File parent = file.getParentFile();
+            if (parent != null && !parent.exists()) parent.mkdirs();
+            FileOutputStream fos = new FileOutputStream(file);
+            bitmap.compress(Bitmap.CompressFormat.JPEG, i, fos);
+            fos.close();
+            return true;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     public static int getCameraType(String str) {
@@ -688,7 +732,18 @@ public class AppUtils implements IConstants {
     }
 
     private static String readTxtFile(String str) {
-        throw new UnsupportedOperationException("Method not decompiled: com.cooingdv.fhdfpv.utils.AppUtils.readTxtFile(java.lang.String):java.lang.String");
+        StringBuilder sb = new StringBuilder();
+        try {
+            BufferedReader reader = new BufferedReader(new FileReader(str));
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line).append("\n");
+            }
+            reader.close();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return sb.toString();
     }
 
     public static String getAutoRearCameraKey(String str) {

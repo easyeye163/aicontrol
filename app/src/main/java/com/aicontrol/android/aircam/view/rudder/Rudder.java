@@ -280,21 +280,98 @@ public class Rudder extends SurfaceView implements SurfaceHolder.Callback, Runna
         canvas.restore();
     }
 
-    /* JADX WARN: Code restructure failed: missing block: B:11:0x001c, code lost:
-    
-        if (r0 != 6) goto L50;
-     */
     @Override // android.view.View
-    /*
-        Code decompiled incorrectly, please refer to instructions dump.
-        To view partially-correct add '--show-bad-code' argument
-    */
-    public boolean onTouchEvent(android.view.MotionEvent r8) {
-        /*
-            Method dump skipped, instructions count: 253
-            To view this dump add '--comments-level debug' option
-        */
-        throw new UnsupportedOperationException("Method not decompiled: com.tzh.wifi.wificam.view.rudder.Rudder.onTouchEvent(android.view.MotionEvent):boolean");
+    public boolean onTouchEvent(android.view.MotionEvent event) {
+        int action = event.getActionMasked();
+        switch (action) {
+            case MotionEvent.ACTION_DOWN: {
+                int pid = event.getPointerId(0);
+                float x = event.getX();
+                float y = event.getY();
+                if (this.ctrlMode == 0) {
+                    if (x < this.screenWidth / 2) {
+                        this.leftJoystick.pointerId = pid;
+                        this.leftJoystick.setPressed(true);
+                        this.leftJoystick.update((int) x, (int) y);
+                    } else {
+                        this.rightJoystick.pointerId = pid;
+                        this.rightJoystick.setPressed(true);
+                        this.rightJoystick.update((int) x, (int) y);
+                    }
+                } else if (this.ctrlMode == 1 || this.ctrlMode == 2) {
+                    pathFollowInit((int) x, (int) y, pid);
+                }
+                break;
+            }
+            case MotionEvent.ACTION_POINTER_DOWN: {
+                int idx = event.getActionIndex();
+                float x2 = event.getX(idx);
+                float y2 = event.getY(idx);
+                int pid2 = event.getPointerId(idx);
+                if (this.ctrlMode == 0) {
+                    if (x2 < this.screenWidth / 2 && !this.leftJoystick.isPressed) {
+                        this.leftJoystick.pointerId = pid2;
+                        this.leftJoystick.setPressed(true);
+                        this.leftJoystick.update((int) x2, (int) y2);
+                    } else if (x2 >= this.screenWidth / 2 && !this.rightJoystick.isPressed) {
+                        this.rightJoystick.pointerId = pid2;
+                        this.rightJoystick.setPressed(true);
+                        this.rightJoystick.update((int) x2, (int) y2);
+                    }
+                }
+                break;
+            }
+            case MotionEvent.ACTION_MOVE: {
+                for (int i = 0; i < event.getPointerCount(); i++) {
+                    int pid3 = event.getPointerId(i);
+                    float mx = event.getX(i);
+                    float my = event.getY(i);
+                    if (this.ctrlMode == 1 || this.ctrlMode == 2) {
+                        if (pid3 == this.followPointerId) {
+                            this.autoPath.lineTo((int) mx, (int) my);
+                        }
+                    } else {
+                        if (pid3 == this.leftJoystick.pointerId && this.leftJoystick.isPressed) {
+                            this.leftJoystick.update((int) mx, (int) my);
+                        }
+                        if (pid3 == this.rightJoystick.pointerId && this.rightJoystick.isPressed) {
+                            this.rightJoystick.update((int) mx, (int) my);
+                        }
+                    }
+                }
+                break;
+            }
+            case MotionEvent.ACTION_UP: {
+                this.leftJoystick.setPressed(false);
+                this.leftJoystick.reset();
+                this.rightJoystick.setPressed(false);
+                this.rightJoystick.reset();
+                if (this.ctrlMode == 1) {
+                    pathFollowUp();
+                }
+                break;
+            }
+            case MotionEvent.ACTION_POINTER_UP: { // action == 6
+                int idx2 = event.getActionIndex();
+                int releasedPid = event.getPointerId(idx2);
+                if (releasedPid == this.leftJoystick.pointerId) {
+                    this.leftJoystick.setPressed(false);
+                    this.leftJoystick.reset();
+                    this.leftJoystick.pointerId = -1;
+                }
+                if (releasedPid == this.rightJoystick.pointerId) {
+                    this.rightJoystick.setPressed(false);
+                    this.rightJoystick.reset();
+                    this.rightJoystick.pointerId = -1;
+                }
+                if (releasedPid == this.followPointerId) {
+                    pathFollowUp();
+                    this.followPointerId = -1;
+                }
+                break;
+            }
+        }
+        return true;
     }
 
     public void onPathFollowRegister() {
