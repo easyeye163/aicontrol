@@ -9,6 +9,8 @@ An AI-powered Android automation app that lets an LLM Agent control Android devi
 <p align="center">
   <img src="Screenshots/Home.jpg" width="300" alt="Home - Permission Management" />
   <img src="Screenshots/Setting.jpg" width="300" alt="Settings - LLM & Channel Config" />
+  <img src="Screenshots/CarControl.jpg" width="300" alt="Car Control - Joystick & Voice" />
+  <img src="Screenshots/CarControl2.jpg" width="300" alt="Car Control - Voice Recognition" />
 </p>
 
 ## Architecture Overview
@@ -213,6 +215,68 @@ Messages are exchanged as JSON over WebSocket:
 Cloud chat can be configured in Settings > Cloud Chat Config:
 - **WebSocket URL**: The cloud server's WebSocket endpoint
 - **Session ID**: Auto-generated if not specified (format: `android_<timestamp>`)
+
+## Car Control
+
+ApkClaw includes a smart car control module that connects to the car via WiFi, supporting **joystick control** and **voice control**.
+
+<p align="center">
+  <img src="Screenshots/CarControl.jpg" width="300" alt="Car Control - Joystick & Voice" />
+  <img src="Screenshots/CarControl2.jpg" width="300" alt="Car Control - Voice Recognition" />
+</p>
+
+### Features
+
+- **Dual Joystick Control**: Left joystick for forward/backward, right joystick for left/right turning, immersive landscape mode
+- **Threshold Trigger**: Direction commands are only sent when joystick reaches ≥95% deflection, stop is sent at ≤5%, no intermediate requests to avoid unnecessary traffic
+- **3D Stop Button**: Center 3D stop button for emergency braking
+- **Voice Control**: Press and hold the voice button to record, release to auto-recognize, with pinyin fuzzy matching for voice commands (forward, backward, left, right, stop)
+- **TTS Feedback**: Voice announces current status after each command ("Moving forward", "Stopped", etc.)
+- **Auto-Return**: Voice commands auto-return to center/stop after 2 seconds to prevent continuous movement
+- **Custom Keywords**: Customizable voice wake words for each direction in settings
+- **Dual STT Engines**: Supports Android system SpeechRecognizer (offline capable) and HTTP API STT (Whisper), switchable in settings
+- **Cellular Fallback**: When using HTTP STT on car WiFi without internet, automatically switches to cellular network for STT requests
+- **Connection Monitoring**: Pings car every 3 seconds, displays real-time connection status
+- **Debug Log Panel**: Shows VAD status, intermediate recognition results, pinyin matching scores
+
+### Voice Control Interaction
+
+Uses **Push-to-Talk** mode:
+
+1. **Press and hold** the voice button → Start recording (button turns red)
+2. **Speak** → Say the command into the microphone (e.g., "forward", "turn left")
+3. **Release** → Automatically stops recording and sends for recognition
+4. Recognition results are matched via pinyin fuzzy matching, auto-executing the corresponding direction command
+
+Voice recognition uses an enhanced VAD algorithm:
+- Automatic ambient noise calibration (first 600ms sampling)
+- EMA rolling average smoothing (α=0.3)
+- Speech-first detection (must detect speech before silence can trigger stop)
+- Minimum speech duration protection (300ms)
+
+### Communication Protocol
+
+The car is controlled via HTTP GET commands:
+
+```
+GET http://{car-ip}:{port}/control/{direction}_{speed}
+```
+
+| Direction | Command | Description |
+|-----------|---------|-------------|
+| Forward | `forw` | Move forward |
+| Backward | `back` | Move backward |
+| Left | `left` | Turn left |
+| Right | `right` | Turn right |
+| Stop | `stop` | Stop immediately |
+
+### Configuration
+
+Configure in Settings > Car Control:
+- **Car IP Address**: LAN IP of the car
+- **Communication Port**: HTTP control port
+- **STT Mode**: Local recognition (system SpeechRecognizer) or remote recognition (HTTP API)
+- **Voice Keywords**: Custom wake words for forward, backward, left, right, stop
 
 ## Accessibility Service
 
