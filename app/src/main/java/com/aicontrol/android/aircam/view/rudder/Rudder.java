@@ -268,15 +268,66 @@ public class Rudder extends SurfaceView implements SurfaceHolder.Callback, Runna
     }
 
     private void drawJoystick(Canvas canvas, Joystick joystick) {
-        canvas.drawBitmap(this.bgBitmap, joystick.center.x - this.bmpBgWidth, joystick.center.y - this.bmpBgWidth, this.mLeftPaint);
+        int cx = joystick.center.x;
+        int cy = joystick.center.y;
+        int bgR = this.bmpBgWidth;
+        int thR = this.bmpWidth;
+
+        // Draw background circle programmatically
+        Paint bgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        bgPaint.setStyle(Paint.Style.STROKE);
+        bgPaint.setStrokeWidth(Math.max(3, bgR / 25));
+        bgPaint.setColor(0x40FFFFFF);
+        canvas.drawCircle(cx, cy, bgR, bgPaint);
+
+        // Inner crosshair lines
+        Paint crossPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        crossPaint.setStrokeWidth(1);
+        crossPaint.setColor(0x25FFFFFF);
+        canvas.drawLine(cx, cy - bgR + 10, cx, cy + bgR - 10, crossPaint);
+        canvas.drawLine(cx - bgR + 10, cy, cx + bgR - 10, cy, crossPaint);
+
+        // Inner reference circle
+        Paint innerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        innerPaint.setStyle(Paint.Style.FILL);
+        innerPaint.setColor(0x15FFFFFF);
+        canvas.drawCircle(cx, cy, (int)(bgR * 0.35f), innerPaint);
+
+        // Draw background bitmap on top (if valid)
+        canvas.drawBitmap(this.bgBitmap, cx - this.bmpBgWidth, cy - this.bmpBgWidth, this.mLeftPaint);
+
+        // Draw thumb
         canvas.save();
         float f = joystick.isPressed ? this.config.pressScale : 1.0f;
-        float f2 = joystick.current.x;
-        float f3 = joystick.current.y;
-        canvas.scale(f, f, f2, f3);
-        Bitmap bitmap = this.thumbBitmap;
-        int i = this.bmpWidth;
-        canvas.drawBitmap(bitmap, f2 - i, f3 - i, this.mLeftPaint);
+        float tx = joystick.current.x;
+        float ty = joystick.current.y;
+        canvas.scale(f, f, tx, ty);
+
+        // Draw thumb glow
+        Paint glowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        glowPaint.setStyle(Paint.Style.FILL);
+        glowPaint.setColor(0x30FFFFFF);
+        canvas.drawCircle(tx, ty, thR + 8, glowPaint);
+
+        // Draw thumb circle
+        Paint thumbPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        thumbPaint.setStyle(Paint.Style.FILL);
+        thumbPaint.setColor(0xC8D0E0FF);
+        canvas.drawCircle(tx, ty, thR, thumbPaint);
+
+        // Thumb outline
+        Paint outlinePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        outlinePaint.setStyle(Paint.Style.STROKE);
+        outlinePaint.setStrokeWidth(Math.max(2, thR / 12));
+        outlinePaint.setColor(0xE0FFFFFF);
+        canvas.drawCircle(tx, ty, thR, outlinePaint);
+
+        // Thumb highlight
+        Paint hlPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        hlPaint.setStyle(Paint.Style.FILL);
+        hlPaint.setColor(0x40FFFFFF);
+        canvas.drawCircle(tx - thR * 0.2f, ty - thR * 0.2f, thR * 0.45f, hlPaint);
+
         canvas.restore();
     }
 

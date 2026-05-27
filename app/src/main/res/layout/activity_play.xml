@@ -11,6 +11,27 @@
         android:layout_height="match_parent"
         android:background="#1a1a1a" />
 
+    <!-- WiFi not connected status overlay -->
+    <LinearLayout android:id="@+id/lyWifiStatus"
+        android:layout_width="wrap_content" android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        android:padding="24dp"
+        android:background="#55000000">
+
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="\u2601 WiFi Camera"
+            android:textSize="22sp" android:textColor="#AAAAAA"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:text="\u8BF7\u8FDE\u63A5\u65E0\u4EBA\u673AWiFi\u70ED\u70B9"
+            android:textSize="14sp" android:textColor="#888888" />
+    </LinearLayout>
+
     <!-- Camera FPV display (right eye for VR mode) -->
     <com.aicontrol.android.aircam.view.DisplayImage
         android:id="@+id/ivRightImage"
@@ -177,9 +198,11 @@
     <LinearLayout
         android:layout_width="50dp" android:layout_height="wrap_content"
         android:layout_gravity="right|center_vertical"
-        android:layout_marginRight="60dp"
+        android:layout_marginRight="10dp"
         android:orientation="vertical"
-        android:gravity="center_horizontal">
+        android:gravity="center_horizontal"
+        android:dividerPadding="2dp"
+        android:showDividers="middle">
 
         <ImageView android:id="@+id/btnPlayRecord"
             android:layout_width="44dp" android:layout_height="44dp"
@@ -226,9 +249,11 @@
     <LinearLayout
         android:layout_width="50dp" android:layout_height="wrap_content"
         android:layout_gravity="left|center_vertical"
-        android:layout_marginLeft="60dp"
+        android:layout_marginLeft="10dp"
         android:orientation="vertical"
-        android:gravity="center_horizontal">
+        android:gravity="center_horizontal"
+        android:dividerPadding="2dp"
+        android:showDividers="middle">
 
         <ImageView android:id="@+id/btnPlayPath"
             android:layout_width="44dp" android:layout_height="44dp"

@@ -119,6 +119,7 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
     private ImageView btnOneKeyFly = null;
     private ImageView btnOneKeyLand = null;
     private ImageView btnOneKeyStop = null;
+    private ImageView btnCheckout = null;
     private ImageView ivRoundMove = null;
     private TextView tvScaleValue = null;
     private TextView tvVoiceWord = null;
@@ -345,13 +346,28 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
             this.mRudder.registerListener(this);
             this.mRudder.invalidateValue();
             Log.e(TAG, "=== rudder DONE ===");
+            // Set initial icons for ALL buttons
+            this.btnRecord.setImageResource(R.mipmap.play_record_icon);
+            this.btnPhotoSnap.setImageResource(R.mipmap.play_auto_photo);
+            this.btnAutoPhoto.setImageResource(R.mipmap.play_auto_photo);
+            this.btnRotate.setImageResource(R.mipmap.play_rotate_icon);
+            this.btnGensor.setImageResource(R.mipmap.play_gsensor_icon);
+            this.btnStayHigh.setImageResource(R.mipmap.play_high_icon);
+            this.btnOneKeyFly.setImageResource(R.mipmap.zone_info_page1_cn);
+            this.btnOneKeyLand.setImageResource(R.mipmap.zone_info_page2_cn);
+            this.btnOneKeyStop.setImageResource(R.mipmap.zone_rotate_180);
+            this.btnReverse.setImageResource(R.mipmap.zone_rotate_180);
+            this.btnNoHead.setImageResource(R.mipmap.play_no_head_icon);
+            this.img_filter_play.setImageResource(R.mipmap.play_button_icon);
+            this.img_voice_control.setImageResource(R.mipmap.voice_nor);
+            this.btnCheckout = (ImageView) findViewById(R.id.btnPlayCheckout);
+            Log.e(TAG, "=== initial icons DONE ===");
+            // Default lock to ON so UI is fully visible
             if (!getApp().bLockClick) {
-                this.btnLock.setImageResource(R.mipmap.play_lock_icon);
-                play_lock_click_up();
-            } else {
-                play_lock_click_down();
-                this.btnLock.setImageResource(R.mipmap.play_lock_icon_down);
+                getApp().bLockClick = true;
             }
+            play_lock_click_down();
+            this.btnLock.setImageResource(R.mipmap.play_lock_icon_down);
             if (getApp().bButtonClick) {
                 this.btnButton.setImageResource(R.mipmap.play_button_icon_down);
                 play_button_click_down();
@@ -1122,6 +1138,16 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
     public void reciveBitmap(int i, int i2, Bitmap bitmap) {
         DisplayImage displayImage;
         this.bWiFiConnect = true;
+        // Hide WiFi status overlay when camera connects
+        final View wifiStatus = findViewById(R.id.lyWifiStatus);
+        if (wifiStatus != null && wifiStatus.getVisibility() != View.GONE) {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    wifiStatus.setVisibility(View.GONE);
+                }
+            });
+        }
         if (this.isBitmapProcessing) {
             return;
         }
