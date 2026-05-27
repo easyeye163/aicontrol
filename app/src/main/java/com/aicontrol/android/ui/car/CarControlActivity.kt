@@ -40,8 +40,7 @@ import java.net.URL
 /**
  * 小车控制界面 - 横屏模式
  * 左摇杆控制前后，右摇杆控制左右转向，中间3D停止按钮
- * 支持语音控制：点击语音按钮开启持续识别，自动检测声音停顿并识别，
- * 识别完成后自动继续监听，再次点击按钮关闭持续识别
+ * 支持语音控制：长按语音按钮开始录音，松开按钮自动停止录音并发送识别
  */
 class CarControlActivity : BaseActivity() {
 
@@ -370,7 +369,7 @@ class CarControlActivity : BaseActivity() {
         }
     }
 
-    // ==================== 语音控制（点击开始/结束） ====================
+    // ==================== 语音控制 ====================
 
     private fun initVoice() {
         ttsManager = TtsManager(this)
@@ -424,6 +423,8 @@ class CarControlActivity : BaseActivity() {
         // 复用同一个 LocalSpeechRecognizer 实例，避免频繁创建销毁导致识别器忙
         if (localRecognizer == null) {
             val recognizer = LocalSpeechRecognizer(this)
+            // 长按模式：用户松手控制停止录音，关闭自动静音检测
+            recognizer.autoSilenceStop = false
             recognizer.listener = object : LocalSpeechRecognizer.Listener {
                 override fun onRecordingStarted() {
                     runOnUiThread {
@@ -479,8 +480,8 @@ class CarControlActivity : BaseActivity() {
     private fun startHttpListening() {
         voiceController?.destroy()
         val controller = VoiceInputController(this)
-        // 持续识别模式：开启自动静音检测，说完话自动停止录音
-        controller.setAutoSilenceStop(true)
+        // 长按模式：用户松手控制停止录音，不需要自动静音检测
+        controller.setAutoSilenceStop(false)
         // 调试日志回调：让 HTTP STT 内部日志也显示在调试面板
         controller.setDebugLogCallback { msg ->
             appendDebugLog("[远程] $msg")

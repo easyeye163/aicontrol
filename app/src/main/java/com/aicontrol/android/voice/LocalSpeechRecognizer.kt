@@ -78,6 +78,9 @@ class LocalSpeechRecognizer(private val context: Context) {
 
     var listener: Listener? = null
 
+    /** 是否启用 VAD 静音自动停止（长按模式下应关闭，由用户松手控制停止） */
+    var autoSilenceStop = true
+
     private var speechRecognizer: SpeechRecognizer? = null
     private var isListening = false
     private var retryCount = 0
@@ -302,6 +305,14 @@ class LocalSpeechRecognizer(private val context: Context) {
                                 lastSpeechTime = 0L
                                 totalSpeechDuration = 0L
                                 silenceStartTime = 0L
+                                handler.postDelayed(this, VAD_CHECK_INTERVAL_MS)
+                                return
+                            }
+
+                            // 如果未启用自动静音停止（长按模式），不自动停止，继续等
+                            if (!autoSilenceStop) {
+                                Log.d(TAG, "Auto silence stop disabled (press-and-hold mode), continuing...")
+                                silenceStartTime = now  // 重置静音计时
                                 handler.postDelayed(this, VAD_CHECK_INTERVAL_MS)
                                 return
                             }
