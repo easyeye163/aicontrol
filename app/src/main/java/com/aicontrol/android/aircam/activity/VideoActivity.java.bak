@@ -1,0 +1,455 @@
+package com.aicontrol.android.aircam.activity;
+
+import com.aicontrol.android.R;
+
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Message;
+import android.util.DisplayMetrics;
+import android.view.View;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
+import android.widget.RelativeLayout;
+import android.widget.SeekBar;
+import android.widget.TextView;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
+import com.aicontrol.android.aircam.utils.Camera;
+import com.aicontrol.android.aircam.presenter.Volume;
+import com.aicontrol.android.aircam.utils.ConfigUtils;
+import com.aicontrol.android.aircam.utils.DisplayUtils;
+import com.aicontrol.android.aircam.utils.LogUtils;
+import com.aicontrol.android.aircam.utils.TimeUtils;
+import com.aicontrol.android.aircam.utils.TimerUtils;
+import com.aicontrol.android.aircam.view.SurfaceViews;
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+import java.util.Timer;
+import java.util.TimerTask;
+
+/* loaded from: classes5.dex */
+public class VideoActivity extends AppCompatActivity implements View.OnClickListener, SeekBar.OnSeekBarChangeListener {
+    protected static final int HideTime = 2;
+    private static final int MSG_VIDEO_GET_FRAME = 3;
+    private static final int MSG_VIDEO_PLAY_NEXT = 1;
+    private static final int MSG_VIDEO_PLAY_PAUSE = 0;
+    private static final int MSG_VIDEO_PLAY_PRE = 2;
+    private static final int MSG_VIDEO_UPDATE_TIME = 4;
+    protected static final int Pause_Video = 11;
+    protected static final int ShowTime = 3;
+    protected static final int ShowVideo = 5;
+    protected static final int UpdateTime = 1;
+    protected static final int Update_Video = 9;
+    static ByteArrayInputStream inputStream;
+    private static ImageView iv_pause;
+    private static SeekBar sb_time;
+    private static TextView tv_cur_time;
+    private static TextView tv_left_time;
+    protected long LastMicroSecond;
+    protected long Race_Current_Time;
+    private ImageView btnRoate180;
+    private Volume mVolume;
+    private Toolbar toolbar;
+    private static List<String> mPathList = new ArrayList();
+    private static int vIndex = 0;
+    private static SurfaceViews mSurface = null;
+    static boolean isUsable = true;
+    private static LogUtils logEx = LogUtils.setLogger(VideoActivity.class);
+    private static boolean isPlay = false;
+    private static int getFrameResult = 0;
+    private static int videodur = 0;
+    private static TimerUtils mTimeUtils = null;
+    private static Bitmap bitmap = null;
+    private static boolean isSplite = false;
+    private SurfaceViews surfaceViews = null;
+    private String CurVideoPath = "";
+    private boolean isStop = false;
+    private int totaltime = 0;
+    private int totalframe = 0;
+    private int cur_frame = 0;
+    private double pausetime = 0.0d;
+    private double curtime = 0.0d;
+    protected double offsettime = 0.0d;
+    protected boolean isOver = false;
+    protected long oldtime = 0;
+    protected long curtime1 = 0;
+    protected boolean is_first = true;
+    protected Thread ThreadTimeHide = null;
+    protected Thread ThreadTimeShow = null;
+    protected boolean recount_time = true;
+    private ImageView iv_prev = null;
+    private ImageView iv_stop = null;
+    private ImageView iv_next = null;
+    private SeekBar sb_voice = null;
+    private RelativeLayout ly_status = null;
+    private RelativeLayout ly_time = null;
+    private ImageView iv_bg = null;
+    private int screenWidth = 0;
+    private int screenHeight = 0;
+    private boolean isHide = false;
+    private RelativeLayout vpScreenLayout = null;
+    private int curHideTime = 0;
+    private LinearLayout surfaceLayout = null;
+    private String timeString = "";
+    private String subName = "";
+    protected long TimeOffset = 0;
+    protected boolean isPause = true;
+    private Timer CM215_Top_Timer = null;
+    private TimerTask CM215_Top_TimerTask = null;
+    private boolean isRunning = false;
+    private Thread mThread = null;
+    protected String TAG = "VideoPlayer";
+    private int bRoate = 0;
+    private Bitmap mBitmap = null;
+    private Matrix matrix = null;
+    Runnable mRunnable = new Runnable() { // from class: com.tzh.wifi.wificam.activity.VideoActivity.1
+        @Override // java.lang.Runnable
+        public void run() {
+            VideoActivity.this.oldtime = new Date(System.currentTimeMillis()).getTime();
+            VideoActivity.this.curtime = 0.0d;
+            boolean unused = VideoActivity.isPlay = true;
+            VideoActivity.this.isStop = false;
+            int i = 0;
+            while (!VideoActivity.this.isStop) {
+                VideoActivity.this.curtime1 = new Date(System.currentTimeMillis()).getTime();
+                VideoActivity videoActivity = VideoActivity.this;
+                videoActivity.curtime = videoActivity.offsettime + ((VideoActivity.this.curtime1 - VideoActivity.this.oldtime) / 1000.0d);
+                int i2 = (int) VideoActivity.this.curtime;
+                if (i2 != i) {
+                    Message message = new Message();
+                    message.what = 1;
+                    VideoActivity.this.handler.sendMessage(message);
+                    i = i2;
+                }
+                if (VideoActivity.this.curtime < VideoActivity.this.totaltime) {
+                    byte[] iCameraGetOneSecond = Camera.iCameraGetOneSecond(VideoActivity.this.curtime);
+                    Bitmap decodeByteArray = BitmapFactory.decodeByteArray(iCameraGetOneSecond, 0, iCameraGetOneSecond.length);
+                    if (decodeByteArray != null) {
+                        VideoActivity.this.mBitmap = Bitmap.createBitmap(decodeByteArray, 0, 0, decodeByteArray.getWidth(), decodeByteArray.getHeight(), VideoActivity.this.matrix, true);
+                        VideoActivity.mSurface.SetBitmap(VideoActivity.this.mBitmap);
+                        decodeByteArray.recycle();
+                    }
+                } else {
+                    VideoActivity.this.isOver = true;
+                    VideoActivity.this.isStop = true;
+                    boolean unused2 = VideoActivity.isPlay = false;
+                    return;
+                }
+            }
+        }
+    };
+    Handler handler = new Handler() { // from class: com.tzh.wifi.wificam.activity.VideoActivity.2
+        @Override // android.os.Handler
+        public void handleMessage(Message message) {
+            super.handleMessage(message);
+            int i = message.what;
+            if (i == 1) {
+                VideoActivity.tv_cur_time.post(new Runnable() { // from class: com.tzh.wifi.wificam.activity.VideoActivity.2.1
+                    @Override // java.lang.Runnable
+                    public void run() {
+                        int i2 = (int) VideoActivity.this.curtime;
+                        VideoActivity.sb_time.setProgress(i2);
+                        VideoActivity.tv_cur_time.setText(String.format("%02d:%02d:%02d", Integer.valueOf(i2 / 3600), Integer.valueOf((i2 / 60) % 60), Integer.valueOf(i2 % 60)));
+                    }
+                });
+                return;
+            }
+            if (i == 2) {
+                VideoActivity.this.isHide = true;
+            } else if (i == 3) {
+                VideoActivity.this.isHide = false;
+            } else {
+                if (i != 11) {
+                    return;
+                }
+                VideoActivity.this.Pause();
+            }
+        }
+    };
+
+    @Override // android.widget.SeekBar.OnSeekBarChangeListener
+    public void onProgressChanged(SeekBar seekBar, int i, boolean z) {
+    }
+
+    @Override // android.widget.SeekBar.OnSeekBarChangeListener
+    public void onStartTrackingTouch(SeekBar seekBar) {
+    }
+
+    @Override // android.widget.SeekBar.OnSeekBarChangeListener
+    public void onStopTrackingTouch(SeekBar seekBar) {
+    }
+
+    @Override // androidx.fragment.app.FragmentActivity, androidx.activity.ComponentActivity, androidx.core.app.ComponentActivity, android.app.Activity
+    protected void onCreate(Bundle bundle) {
+        getWindow().addFlags(128);
+        super.onCreate(bundle);
+        setContentView(R.layout.videoplayer);
+        DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
+        this.screenWidth = displayMetrics.widthPixels;
+        this.screenHeight = displayMetrics.heightPixels;
+        Intent intent = getIntent();
+        vIndex = intent.getIntExtra("m_filelist_cur", 0);
+        ArrayList<String> stringArrayListExtra = intent.getStringArrayListExtra("m_filelist_videolist");
+        mPathList = stringArrayListExtra;
+        this.CurVideoPath = stringArrayListExtra.get(vIndex);
+        this.mVolume = new Volume(this);
+        this.matrix = new Matrix();
+        widget_init();
+        if (new File(this.CurVideoPath).exists()) {
+            Camera.iCameraOpenFile(this.CurVideoPath);
+            this.totaltime = (int) Camera.iCameraGetTotalTime();
+            this.totalframe = Camera.iCameraGetTotalFrame();
+            int videoPlayRotateCfg = ConfigUtils.getVideoPlayRotateCfg(this);
+            this.bRoate = videoPlayRotateCfg;
+            if (videoPlayRotateCfg == 1) {
+                this.matrix.setRotate(180.0f);
+                this.btnRoate180.setImageResource(R.mipmap.zone_rotate_180_down);
+            } else {
+                this.matrix.setRotate(0.0f);
+                this.btnRoate180.setImageResource(R.mipmap.zone_rotate_180);
+            }
+            Play();
+            Camera.iCameraGetTotalFrame();
+            sb_time.setMax(this.totaltime);
+            sb_time.setProgress(0);
+            tv_left_time.setText(String.format("/%02d:%02d:%02d", Integer.valueOf(this.totaltime / 3600), Integer.valueOf((this.totaltime / 60) % 60), Integer.valueOf(this.totaltime % 60)));
+            tv_cur_time.setText("00:00:00");
+            this.isRunning = true;
+        }
+    }
+
+    private void widget_init() {
+        Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
+        this.toolbar = toolbar;
+        setSupportActionBar(toolbar);
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+            getSupportActionBar().setDisplayShowTitleEnabled(false);
+        }
+        this.toolbar.setNavigationIcon(R.drawable.ic_arrow_back_white);
+        this.toolbar.setNavigationOnClickListener(new View.OnClickListener() { // from class: com.tzh.wifi.wificam.activity.VideoActivity$$ExternalSyntheticLambda0
+            @Override // android.view.View.OnClickListener
+            public final void onClick(View view) {
+                VideoActivity.this.m3885lambda$widget_init$0$comtzhwifiwificamactivityVideoActivity(view);
+            }
+        });
+        mSurface = (SurfaceViews) findViewById(R.id.videoPlaySurface);
+        this.surfaceLayout = (LinearLayout) findViewById(R.id.surfaceLayout);
+        this.vpScreenLayout = (RelativeLayout) findViewById(R.id.vpscreenLayout);
+        tv_cur_time = (TextView) findViewById(R.id.tv_cur_time_videoplayer);
+        tv_left_time = (TextView) findViewById(R.id.tv_left_time_videoplayer);
+        this.iv_stop = (ImageView) findViewById(R.id.iv_stop_videoplayer);
+        this.iv_prev = (ImageView) findViewById(R.id.iv_prev_videoplayer);
+        this.iv_next = (ImageView) findViewById(R.id.iv_next_videoplayer);
+        this.btnRoate180 = (ImageView) findViewById(R.id.btnRotate180);
+        iv_pause = (ImageView) findViewById(R.id.iv_pause_videoplayer);
+        this.iv_bg = (ImageView) findViewById(R.id.iv_bg_videoplayer);
+        sb_time = (SeekBar) findViewById(R.id.sb_timebar_videoplayer);
+        this.sb_voice = (SeekBar) findViewById(R.id.sb_voice_control_videoplayer);
+        this.iv_stop.setOnClickListener(this);
+        iv_pause.setOnClickListener(this);
+        this.iv_prev.setOnClickListener(this);
+        this.iv_next.setOnClickListener(this);
+        this.btnRoate180.setOnClickListener(this);
+        sb_time.setOnSeekBarChangeListener(this);
+        this.sb_voice.setOnSeekBarChangeListener(this);
+        this.sb_voice.setMax(this.mVolume.getMaxVol());
+        this.sb_voice.setProgress(this.mVolume.getCurVol());
+        RelativeLayout.LayoutParams layoutParams = new RelativeLayout.LayoutParams(-2, -2);
+        layoutParams.width = (this.screenWidth * 120) / DisplayUtils.defaultWidth;
+        layoutParams.height = (this.screenWidth * 120) / DisplayUtils.defaultWidth;
+        layoutParams.addRule(14);
+        this.btnRoate180.setLayoutParams(layoutParams);
+    }
+
+    /* renamed from: lambda$widget_init$0$com-tzh-wifi-wificam-activity-VideoActivity, reason: not valid java name */
+    /* synthetic */ void m3885lambda$widget_init$0$comtzhwifiwificamactivityVideoActivity(View view) {
+        this.isStop = true;
+        Camera.iCameraCloseFile();
+        finish();
+    }
+
+    public void Play() {
+        Thread thread = this.mThread;
+        if (thread == null || !thread.isAlive()) {
+            Thread thread2 = new Thread(this.mRunnable);
+            this.mThread = thread2;
+            thread2.start();
+        }
+    }
+
+    private String transTime(String str) {
+        Date date;
+        try {
+            date = new SimpleDateFormat("yyyyMMddHHmmss", Locale.getDefault()).parse(str);
+        } catch (ParseException e) {
+            e.printStackTrace();
+            date = null;
+        }
+        return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(date);
+    }
+
+    @Override // android.view.View.OnClickListener
+    public void onClick(View view) {
+        if (view.getId() != R.id.btnRotate180) {
+            return;
+        }
+        if (this.bRoate == 0) {
+            this.bRoate = 1;
+            this.matrix.setRotate(180.0f);
+            ConfigUtils.writeVideoPlayRotateCfg(this, 1);
+            this.btnRoate180.setImageResource(R.mipmap.zone_rotate_180_down);
+            return;
+        }
+        this.bRoate = 0;
+        this.matrix.setRotate(0.0f);
+        ConfigUtils.writeVideoPlayRotateCfg(this, 0);
+        this.btnRoate180.setImageResource(R.mipmap.zone_rotate_180);
+    }
+
+    private class SeekBarChangeListener implements SeekBar.OnSeekBarChangeListener {
+        @Override // android.widget.SeekBar.OnSeekBarChangeListener
+        public void onStartTrackingTouch(SeekBar seekBar) {
+        }
+
+        private SeekBarChangeListener() {
+        }
+
+        @Override // android.widget.SeekBar.OnSeekBarChangeListener
+        public void onProgressChanged(SeekBar seekBar, int i, boolean z) {
+            VideoActivity videoActivity = VideoActivity.this;
+            videoActivity.oldtime = videoActivity.curtime1;
+            double d = i;
+            VideoActivity.this.offsettime = d;
+            if (VideoActivity.this.isOver) {
+                VideoActivity.this.isOver = false;
+                VideoActivity.this.isStop = false;
+                VideoActivity.this.offsettime = d;
+                VideoActivity.this.Play();
+            }
+        }
+
+        @Override // android.widget.SeekBar.OnSeekBarChangeListener
+        public void onStopTrackingTouch(SeekBar seekBar) {
+            int progress = seekBar.getProgress();
+            Camera.iCameraGetOneSecond(progress);
+            VideoActivity.tv_cur_time.setText(new TimeUtils(progress).getTime());
+        }
+    }
+
+    /* JADX WARN: Code restructure failed: missing block: B:7:0x001b, code lost:
+    
+        if (r1 != 261) goto L18;
+     */
+    @Override // android.app.Activity
+    /*
+        Code decompiled incorrectly, please refer to instructions dump.
+        To view partially-correct add '--show-bad-code' argument
+    */
+    public boolean onTouchEvent(android.view.MotionEvent r5) {
+        /*
+            r4 = this;
+            r5.getPointerCount()
+            int r0 = r5.getAction()
+            r1 = 65280(0xff00, float:9.1477E-41)
+            r0 = r0 & r1
+            int r0 = r0 >>> 8
+            int r1 = r5.getAction()
+            r2 = 1
+            if (r1 == 0) goto L21
+            if (r1 == r2) goto L1e
+            r3 = 5
+            if (r1 == r3) goto L21
+            r3 = 261(0x105, float:3.66E-43)
+            if (r1 == r3) goto L21
+            goto L5d
+        L1e:
+            r4.recount_time = r2
+            goto L5d
+        L21:
+            r5.getX(r0)
+            r5.getY(r0)
+            boolean r5 = r4.isHide
+            if (r5 != 0) goto L50
+            r5 = 0
+            r4.recount_time = r5
+            boolean r0 = r4.isPause
+            if (r0 == 0) goto L42
+            com.tzh.wifi.wificam.activity.VideoActivity.isPlay = r2
+            r4.isStop = r5
+            r4.RePlay()
+            long r0 = java.lang.System.currentTimeMillis()
+            r4.LastMicroSecond = r0
+            r4.isPause = r5
+            goto L5d
+        L42:
+            r4.Pause()
+            r4.isStop = r2
+            com.tzh.wifi.wificam.activity.VideoActivity.isPlay = r5
+            long r0 = r4.Race_Current_Time
+            r4.TimeOffset = r0
+            r4.isPause = r2
+            goto L5d
+        L50:
+            android.os.Message r5 = new android.os.Message
+            r5.<init>()
+            r0 = 3
+            r5.what = r0
+            android.os.Handler r0 = r4.handler
+            r0.sendMessage(r5)
+        L5d:
+            return r2
+        */
+        throw new UnsupportedOperationException("Method not decompiled: com.tzh.wifi.wificam.activity.VideoActivity.onTouchEvent(android.view.MotionEvent):boolean");
+    }
+
+    public void Pause() {
+        double d = this.curtime;
+        this.pausetime = d;
+        this.offsettime = d;
+        this.isStop = true;
+        isPlay = false;
+        Message message = new Message();
+        message.what = 1;
+        this.handler.sendMessage(message);
+    }
+
+    public void RePlay() {
+        this.isStop = false;
+        if (this.isOver) {
+            this.isOver = false;
+            this.offsettime = 0.0d;
+            this.curtime = 0.0d;
+            this.pausetime = 0.0d;
+            sb_time.setProgress(0);
+            tv_cur_time.setText("00:00:00");
+        }
+        Play();
+    }
+
+    @Override // androidx.activity.ComponentActivity, android.app.Activity
+    public void onBackPressed() {
+        super.onBackPressed();
+        this.isStop = true;
+        Camera.iCameraCloseFile();
+        Thread thread = this.mThread;
+        if (thread != null) {
+            try {
+                thread.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        finish();
+    }
+}

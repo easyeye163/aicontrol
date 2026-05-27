@@ -1,0 +1,175 @@
+package com.aicontrol.android.aircam.activity;
+
+import com.aicontrol.android.R;
+
+import android.content.Intent;
+import android.media.MediaScannerConnection;
+import android.os.Parcelable;
+import androidx.core.content.FileProvider;
+import com.aicontrol.android.aircam.adapter.PhotoAdapter;
+import com.aicontrol.android.aircam.base.BaseMediaListActivity;
+import com.aicontrol.android.aircam.utils.PathUtils;
+import java.io.File;
+import java.io.FileFilter;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+
+/* loaded from: classes5.dex */
+public class PhotoListActivity extends BaseMediaListActivity<PhotoAdapter> implements PhotoAdapter.OnItemClickListener, PhotoAdapter.OnItemLongClickListener {
+    private PathUtils pathUtils;
+    private List<File> photos = new ArrayList();
+    private ArrayList<String> mPathList = new ArrayList<>();
+
+    @Override // com.tzh.wifi.wificam.base.BaseMediaListActivity
+    protected int getLayoutId() {
+        return R.layout.activity_photo_list;
+    }
+
+    @Override // com.tzh.wifi.wificam.base.BaseMediaListActivity
+    protected String getTitleString() {
+        return "Photo Album";
+    }
+
+    @Override // com.tzh.wifi.wificam.base.BaseMediaListActivity
+    protected void initData() {
+        this.pathUtils = new PathUtils(this);
+    }
+
+    @Override // com.tzh.wifi.wificam.base.BaseMediaListActivity, com.tzh.wifi.wificam.base.BaseActivity, androidx.fragment.app.FragmentActivity, android.app.Activity
+    protected void onResume() {
+        super.onResume();
+        refreshFiles();
+    }
+
+    private void refreshFiles() {
+        this.photos.clear();
+        this.mPathList.clear();
+        if (this.pathUtils.getPhotoFile().exists()) {
+            PhotoFilter(this.pathUtils.getPhotoFile());
+        }
+        if (this.mAdapter instanceof PhotoAdapter) {
+            ((PhotoAdapter) this.mAdapter).notifyDataSetChanged();
+        }
+        updateEmptyView();
+    }
+
+    /* JADX INFO: Access modifiers changed from: protected */
+    @Override // com.tzh.wifi.wificam.base.BaseMediaListActivity
+    public PhotoAdapter createAdapter() {
+        PhotoAdapter photoAdapter = new PhotoAdapter(this, this.photos, null, null, 0);
+        photoAdapter.setOnItemClickListener(this);
+        photoAdapter.setOnItemLongClickListener(this);
+        return photoAdapter;
+    }
+
+    @Override // com.tzh.wifi.wificam.base.BaseMediaListActivity
+    protected int getItemCount() {
+        return this.photos.size();
+    }
+
+    static /* synthetic */ int lambda$onDeleteSelected$0(Integer num, Integer num2) {
+        return num2.intValue() - num.intValue();
+    }
+
+    @Override // com.tzh.wifi.wificam.base.BaseMediaListActivity
+    protected void onDeleteSelected(List<Integer> list) {
+        Collections.sort(list, new Comparator() { // from class: com.tzh.wifi.wificam.activity.PhotoListActivity$$ExternalSyntheticLambda1
+            @Override // java.util.Comparator
+            public final int compare(Object obj, Object obj2) {
+                return PhotoListActivity.lambda$onDeleteSelected$0((Integer) obj, (Integer) obj2);
+            }
+        });
+        Iterator<Integer> it2 = list.iterator();
+        while (it2.hasNext()) {
+            int intValue = it2.next().intValue();
+            if (intValue < this.photos.size()) {
+                File file = this.photos.get(intValue);
+                deleteFile(file);
+                MediaScannerConnection.scanFile(this, new String[]{file.toString()}, null, null);
+                this.photos.remove(intValue);
+                this.mPathList.remove(intValue);
+            }
+        }
+        ((PhotoAdapter) this.mAdapter).notifyDataSetChanged();
+        updateEmptyView();
+    }
+
+    @Override // com.tzh.wifi.wificam.base.BaseMediaListActivity
+    protected void onShareSelected(List<Integer> list) {
+        ArrayList<android.net.Uri> arrayList = new ArrayList<>();
+        Iterator<Integer> it2 = list.iterator();
+        while (it2.hasNext()) {
+            arrayList.add(FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", this.photos.get(it2.next().intValue())));
+        }
+        Intent intent = new Intent();
+        if (arrayList.size() == 1) {
+            intent.setAction("android.intent.action.SEND");
+            intent.putExtra("android.intent.extra.STREAM", arrayList.get(0));
+            intent.setType("image/*");
+        } else {
+            intent.setAction("android.intent.action.SEND_MULTIPLE");
+            intent.putParcelableArrayListExtra("android.intent.extra.STREAM", arrayList);
+            intent.setType("image/*");
+        }
+        intent.addFlags(1);
+        try {
+            startActivity(Intent.createChooser(intent, "Share Photos"));
+        } catch (Exception unused) {
+        }
+    }
+
+    @Override // com.tzh.wifi.wificam.adapter.PhotoAdapter.OnItemClickListener
+    public void onItemClick(int i) {
+        Intent intent = new Intent(this, (Class<?>) PhotoPlayer.class);
+        intent.putExtra("showjpg", this.photos.get(i).getAbsolutePath());
+        intent.putExtra("selectedPhotoIndex", i);
+        intent.putStringArrayListExtra("photoList", this.mPathList);
+        startActivity(intent);
+    }
+
+    @Override // com.tzh.wifi.wificam.adapter.PhotoAdapter.OnItemLongClickListener
+    public void onItemLongClick(int i) {
+        enterSelectionMode();
+        ((PhotoAdapter) this.mAdapter).toggleSelection(i);
+    }
+
+    private void deleteFile(File file) {
+        File[] listFiles;
+        if (file.exists()) {
+            if (file.isFile()) {
+                file.delete();
+            } else if (file.isDirectory() && (listFiles = file.listFiles()) != null) {
+                for (File file2 : listFiles) {
+                    deleteFile(file2);
+                }
+            }
+            file.delete();
+        }
+    }
+
+    private void PhotoFilter(File file) {
+        File[] listFiles = file.listFiles(new FileFilter() { // from class: com.tzh.wifi.wificam.activity.PhotoListActivity$$ExternalSyntheticLambda0
+            @Override // java.io.FileFilter
+            public final boolean accept(File file2) {
+                return PhotoListActivity.lambda$PhotoFilter$1(file2);
+            }
+        });
+        if (listFiles == null || listFiles.length <= 0) {
+            return;
+        }
+        for (File file2 : listFiles) {
+            if (!this.mPathList.contains(file2.getAbsolutePath())) {
+                this.mPathList.add(file2.getAbsolutePath());
+                this.photos.add(file2);
+            }
+        }
+    }
+
+    static /* synthetic */ boolean lambda$PhotoFilter$1(File file) {
+        String lowerCase = file.getAbsolutePath().toLowerCase();
+        return file.isFile() && (lowerCase.endsWith(".bmp") || lowerCase.endsWith(".jpg") || lowerCase.endsWith(".png"));
+    }
+}

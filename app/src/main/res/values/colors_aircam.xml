@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#000000</color>
+    <color name="white">#FFFFFF</color>
+    <color name="transparent">#00000000</color>
+    <color name="lightgrey">#D3D3D3</color>
+    <color name="colorSeekBar">#FF4081</color>
+    <color name="color_all_bg">#F5F5F5</color>
+    <color name="filter_bg">#80000000</color>
+    <color name="frame_filter">#FFFFFFFF</color>
+</resources>

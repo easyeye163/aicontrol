@@ -1,0 +1,265 @@
+package com.aicontrol.android.aircam.activity;
+
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkRequest;
+import android.os.Bundle;
+import android.util.Log;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
+import com.google.android.material.card.MaterialCardViewHelper;
+import com.aicontrol.android.aircam.base.BaseActivity;
+import com.aicontrol.android.aircam.utils.PxUtils;
+import com.unad.sdk.UNADFeedAd;
+import com.unad.sdk.UNADFeedAdView;
+import com.unad.sdk.dto.AdError;
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
+/* loaded from: classes5.dex */
+public class PlayBackActivity extends BaseActivity implements View.OnClickListener {
+    private static HttpURLConnection con = null;
+    private static int state = -1;
+    private static URL url;
+    private String TAG = "PlayBackActivityAD";
+    private int adCount = 0;
+    private LinearLayout adlayout;
+    ConnectivityManager.NetworkCallback callback;
+    ConnectivityManager connectivityManager;
+    private UNADFeedAd mADManager;
+
+    static /* synthetic */ int access$112(PlayBackActivity playBackActivity, int i) {
+        int i2 = playBackActivity.adCount + i;
+        playBackActivity.adCount = i2;
+        return i2;
+    }
+
+    static /* synthetic */ int access$120(PlayBackActivity playBackActivity, int i) {
+        int i2 = playBackActivity.adCount - i;
+        playBackActivity.adCount = i2;
+        return i2;
+    }
+
+    @Override // androidx.fragment.app.FragmentActivity, androidx.activity.ComponentActivity, androidx.core.app.ComponentActivity, android.app.Activity
+    protected void onCreate(Bundle bundle) {
+        super.onCreate(bundle);
+        this.connectivityManager = (ConnectivityManager) getSystemService("connectivity");
+        setContentView(R.layout.activity_playback);
+        LinearLayout linearLayout = (LinearLayout) findViewById(R.id.adlayoutPlayback);
+        this.adlayout = linearLayout;
+        ViewGroup.MarginLayoutParams marginLayoutParams = (ViewGroup.MarginLayoutParams) linearLayout.getLayoutParams();
+        marginLayoutParams.width = PxUtils.dpToPx(this, 320);
+        this.adlayout.setLayoutParams(marginLayoutParams);
+    }
+
+    @Override // com.tzh.wifi.wificam.base.BaseActivity, android.view.View.OnClickListener
+    public void onClick(View view) {
+        switch (view.getId()) {
+            case R.id.ivPhotoList /* 2131362568 */:
+                startActivity(PhotoListActivity.class);
+                break;
+            case R.id.ivPlayBackReturn /* 2131362569 */:
+                onBackPressed();
+                break;
+            case R.id.ivVideoList /* 2131362581 */:
+                startActivity(VideoListActivity.class);
+                break;
+        }
+    }
+
+    @Override // com.tzh.wifi.wificam.base.BaseActivity, androidx.fragment.app.FragmentActivity, android.app.Activity
+    protected void onResume() {
+        super.onResume();
+        UNADFeedAd uNADFeedAd = this.mADManager;
+        if (uNADFeedAd != null) {
+            uNADFeedAd.onResume();
+        }
+        Log.e(this.TAG, "ping init");
+        if (ping()) {
+            Log.e(this.TAG, "有网络");
+            refreshBanner();
+        } else {
+            Log.e(this.TAG, "没有网络，切换移动数据");
+            useNetwork();
+        }
+        Log.e(this.TAG, "ping end");
+    }
+
+    @Override // androidx.fragment.app.FragmentActivity, android.app.Activity
+    protected void onPause() {
+        super.onPause();
+        UNADFeedAd uNADFeedAd = this.mADManager;
+        if (uNADFeedAd != null) {
+            uNADFeedAd.onPause();
+        }
+    }
+
+    @Override // com.tzh.wifi.wificam.base.BaseActivity, androidx.appcompat.app.AppCompatActivity, androidx.fragment.app.FragmentActivity, android.app.Activity
+    protected void onStop() {
+        super.onStop();
+        this.connectivityManager.bindProcessToNetwork(null);
+        if (this.callback != null) {
+            this.connectivityManager.unregisterNetworkCallback(this.callback);
+            this.callback = null;
+        }
+    }
+
+    @Override // com.tzh.wifi.wificam.base.BaseActivity, androidx.appcompat.app.AppCompatActivity, androidx.fragment.app.FragmentActivity, android.app.Activity
+    protected void onDestroy() {
+        super.onDestroy();
+    }
+
+    @Override // androidx.activity.ComponentActivity, android.app.Activity
+    public void onBackPressed() {
+        super.onBackPressed();
+        overridePendingTransition(android.R.anim.slide_in_left, android.R.anim.slide_out_right);
+    }
+
+    private void init() {
+        UNADFeedAd uNADFeedAd = new UNADFeedAd(this, "Adgo-unit-4860783506", new UNADFeedAd.AdViewListener() { // from class: com.tzh.wifi.wificam.activity.PlayBackActivity.1
+            @Override // com.unad.sdk.UNADFeedAd.AdViewListener
+            public void onAdClicked(UNADFeedAdView uNADFeedAdView) {
+            }
+
+            @Override // com.unad.sdk.UNADFeedAd.AdViewListener
+            public void onAdLoaded(UNADFeedAdView uNADFeedAdView) {
+                Log.e(PlayBackActivity.this.TAG, "UI   :onAdLoaded");
+                if (PlayBackActivity.this.adCount == 0) {
+                    PlayBackActivity.access$112(PlayBackActivity.this, 1);
+                    PlayBackActivity.this.adlayout.addView(uNADFeedAdView);
+                    uNADFeedAdView.render();
+                    PlayBackActivity.this.runOnUiThread(new Runnable() { // from class: com.tzh.wifi.wificam.activity.PlayBackActivity.1.1
+                        @Override // java.lang.Runnable
+                        public void run() {
+                            PlayBackActivity.this.adlayout.setVisibility(0);
+                        }
+                    });
+                }
+            }
+
+            @Override // com.unad.sdk.UNADFeedAd.AdViewListener
+            public void onAdFailed(AdError adError) {
+                Log.e(PlayBackActivity.this.TAG, "onAdViewFailed.....msg:" + adError.getMessage());
+            }
+
+            @Override // com.unad.sdk.UNADFeedAd.AdViewListener
+            public void onAdClose(UNADFeedAdView uNADFeedAdView) {
+                Log.e(PlayBackActivity.this.TAG, "UI   :onClose");
+                PlayBackActivity.access$120(PlayBackActivity.this, 1);
+                PlayBackActivity.this.runOnUiThread(new Runnable() { // from class: com.tzh.wifi.wificam.activity.PlayBackActivity.1.2
+                    @Override // java.lang.Runnable
+                    public void run() {
+                        PlayBackActivity.this.adlayout.removeAllViews();
+                        PlayBackActivity.this.adlayout.setVisibility(4);
+                    }
+                });
+            }
+
+            @Override // com.unad.sdk.UNADFeedAd.AdViewListener
+            public void onAdOpen(UNADFeedAdView uNADFeedAdView) {
+                Log.e(PlayBackActivity.this.TAG, "UI   :onAdOpen");
+            }
+        });
+        this.mADManager = uNADFeedAd;
+        uNADFeedAd.loadAd();
+    }
+
+    public static boolean isNetOnline() {
+        String str = "LogoActivityAD";
+        int i = 0;
+        boolean z = true;
+        while (i < 2) {
+            try {
+                URL url2 = new URL("https://www.baidu.com");
+                url = url2;
+                HttpURLConnection httpURLConnection = (HttpURLConnection) url2.openConnection();
+                con = httpURLConnection;
+                httpURLConnection.setConnectTimeout(MaterialCardViewHelper.DEFAULT_FADE_ANIM_DURATION);
+                state = con.getResponseCode();
+                Log.e(str, "isNetOnline counts: " + i + "=state: " + state);
+                return state != 200 ? z : true;
+            } catch (Exception unused) {
+                i++;
+                Log.e(str, "isNetOnline URL不可用，连接第 " + i + " 次");
+                z = false;
+            }
+        }
+        return z;
+    }
+
+    private void useNetwork() {
+        Log.e(this.TAG, "change network");
+        NetworkRequest.Builder builder = new NetworkRequest.Builder();
+        builder.addTransportType(0);
+        builder.addCapability(12);
+        NetworkRequest build = builder.build();
+        ConnectivityManager.NetworkCallback networkCallback = new ConnectivityManager.NetworkCallback() { // from class: com.tzh.wifi.wificam.activity.PlayBackActivity.2
+            @Override // android.net.ConnectivityManager.NetworkCallback
+            public void onAvailable(Network network) {
+                super.onAvailable(network);
+                Log.i(PlayBackActivity.this.TAG, "已根据功能和传输类型找到合适的网络");
+                PlayBackActivity.this.connectivityManager.bindProcessToNetwork(network);
+                if (PlayBackActivity.isNetOnline()) {
+                    Log.e(PlayBackActivity.this.TAG, "切换后有网络");
+                } else {
+                    Log.e(PlayBackActivity.this.TAG, "切换后没有网络");
+                }
+                PlayBackActivity.this.runOnUiThread(new Runnable() { // from class: com.tzh.wifi.wificam.activity.PlayBackActivity.2.1
+                    @Override // java.lang.Runnable
+                    public void run() {
+                        PlayBackActivity.this.refreshBanner();
+                    }
+                });
+            }
+
+            @Override // android.net.ConnectivityManager.NetworkCallback
+            public void onUnavailable() {
+                super.onUnavailable();
+                Log.e(PlayBackActivity.this.TAG, "onUnavailable");
+            }
+
+            @Override // android.net.ConnectivityManager.NetworkCallback
+            public void onLost(Network network) {
+                Log.e(PlayBackActivity.this.TAG, "onLost");
+            }
+        };
+        this.callback = networkCallback;
+        this.connectivityManager.requestNetwork(build, networkCallback);
+    }
+
+    public static final boolean ping() {
+        String str;
+        int i;
+        try {
+            Process exec = Runtime.getRuntime().exec("ping -c 1 -w 1 www.baidu.com");
+            long currentTimeMillis = System.currentTimeMillis();
+            i = -1;
+            while (System.currentTimeMillis() - currentTimeMillis < 500) {
+                try {
+                    i = exec.exitValue();
+                    Log.d("LogoActivityAD", "status = " + i);
+                    break;
+                } catch (IllegalThreadStateException unused) {
+                }
+            }
+        } catch (IOException unused2) {
+            str = "result = IOException";
+        } catch (Throwable th) {
+            Log.d("LogoActivityAD", "result = null");
+            throw th;
+        }
+        if (i == 0) {
+            Log.d("LogoActivityAD", "result = success");
+            return true;
+        }
+        str = "result = failed";
+        Log.d("LogoActivityAD", str);
+        return false;
+    }
+
+    public void refreshBanner() {
+        init();
+    }
+}

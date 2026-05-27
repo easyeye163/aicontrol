@@ -1,0 +1,131 @@
+package com.aicontrol.android.aircam.activity;
+
+import android.content.Intent;
+import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.net.Uri;
+import android.os.Bundle;
+import android.view.View;
+import android.widget.ListAdapter;
+import com.applovin.sdk.AppLovinEventTypes;
+import com.aicontrol.android.aircam.adapter.FilterAdapter2;
+import com.aicontrol.android.aircam.base.BaseActivity;
+import com.aicontrol.android.aircam.bean.FilterEffect;
+import com.aicontrol.android.aircam.utils.DataHandler;
+import com.aicontrol.android.aircam.utils.GPUImageFilterTools;
+import com.aicontrol.android.aircam.utils.ImageCreator;
+import com.aicontrol.android.aircam.utils.PathUtils;
+import com.vungle.ads.internal.model.AdPayload;
+import it.sephiroth.android.library.widget.AdapterView;
+import it.sephiroth.android.library.widget.HListView;
+import java.io.File;
+import java.util.List;
+import jp.co.cyberagent.android.gpuimage.GPUImageView;
+
+/* loaded from: classes5.dex */
+public class FilterActivity extends BaseActivity {
+    private FilterAdapter2 adapter;
+    private Bitmap bitmap;
+    private String fileUrl;
+    private GPUImageView gpuimage;
+    private HListView listFilter;
+    private PathUtils pathUtils = null;
+    private File photoFile = null;
+    private String url;
+
+    @Override // androidx.fragment.app.FragmentActivity, androidx.activity.ComponentActivity, androidx.core.app.ComponentActivity, android.app.Activity
+    protected void onCreate(Bundle bundle) {
+        super.onCreate(bundle);
+        setContentView(R.layout.activity_test);
+        DataHandler.initFilters(this);
+        this.pathUtils = new PathUtils(this);
+        this.gpuimage = (GPUImageView) findViewById(R.id.gpuimage);
+        this.listFilter = (HListView) findViewById(R.id.list_filter);
+        initData();
+    }
+
+    protected void initData() {
+        String stringExtra = getIntent().getStringExtra("newImage");
+        this.url = stringExtra;
+        if (stringExtra.startsWith(AppLovinEventTypes.USER_VIEWED_CONTENT)) {
+            this.fileUrl = this.url;
+        } else {
+            this.fileUrl = AdPayload.FILE_SCHEME + this.url;
+        }
+        this.bitmap = BitmapFactory.decodeFile(this.url);
+        this.gpuimage.setRatio(r0.getWidth() / this.bitmap.getHeight());
+        this.gpuimage.setImage(this.bitmap);
+        loadSmallImage();
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public String findImagePath(Uri uri) {
+        if (AppLovinEventTypes.USER_VIEWED_CONTENT.equals(uri.getScheme())) {
+            Cursor query = getContentResolver().query(uri, new String[]{"_data"}, null, null, null);
+            r1 = query.moveToFirst() ? query.getString(query.getColumnIndexOrThrow("_data")) : null;
+            query.close();
+        }
+        return r1 == null ? uri.toString() : r1;
+    }
+
+    private void loadSmallImage() {
+        new ImageCreator(getApplicationContext()) { // from class: com.tzh.wifi.wificam.activity.FilterActivity.1
+            @Override // com.tzh.wifi.wificam.utils.ImageCreator
+            public void getSmallImage(List<Bitmap> list) {
+                FilterActivity.this.initFilter(list);
+            }
+        }.loadImage(this.url);
+    }
+
+    public void ButtonClick(View view) {
+        switch (view.getId()) {
+            case R.id.filter_close /* 2131362261 */:
+                finish();
+                break;
+            case R.id.filter_completed /* 2131362262 */:
+                this.gpuimage.saveToPictures("GpuImageFilter", System.currentTimeMillis() + ".jpg", new GPUImageView.OnPictureSavedListener() { // from class: com.tzh.wifi.wificam.activity.FilterActivity.2
+                    @Override // jp.co.cyberagent.android.gpuimage.GPUImageView.OnPictureSavedListener
+                    public void onPictureSaved(Uri uri) {
+                        Intent intent = new Intent();
+                        intent.putExtra("filter_image", FilterActivity.this.findImagePath(uri));
+                        FilterActivity.this.setResult(15, intent);
+                        FilterActivity.this.finish();
+                    }
+                });
+                break;
+        }
+    }
+
+    @Override // com.tzh.wifi.wificam.base.BaseActivity, androidx.appcompat.app.AppCompatActivity, androidx.fragment.app.FragmentActivity, android.app.Activity
+    protected void onDestroy() {
+        super.onDestroy();
+        this.gpuimage.recycleSurface();
+        Bitmap bitmap = this.bitmap;
+        if (bitmap == null || bitmap.isRecycled()) {
+            return;
+        }
+        this.bitmap.recycle();
+        this.bitmap = null;
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public void initFilter(List<Bitmap> list) {
+        final List<FilterEffect> list2 = DataHandler.filters;
+        FilterAdapter2 filterAdapter2 = new FilterAdapter2(this, list);
+        this.adapter = filterAdapter2;
+        filterAdapter2.setSelected(0);
+        this.adapter.setSelectFilter(0);
+        this.listFilter.setAdapter((ListAdapter) this.adapter);
+        this.listFilter.setOnItemClickListener(new AdapterView.OnItemClickListener() { // from class: com.tzh.wifi.wificam.activity.FilterActivity.3
+            @Override // it.sephiroth.android.library.widget.AdapterView.OnItemClickListener
+            public void onItemClick(AdapterView<?> adapterView, View view, int i, long j) {
+                if (FilterActivity.this.adapter.getSelectFilter() != i) {
+                    FilterActivity.this.adapter.setSelectFilter(i);
+                    FilterActivity.this.adapter.setSelected(i);
+                    FilterActivity.this.gpuimage.setFilter(GPUImageFilterTools.createFilterForType(FilterActivity.this.getApplicationContext(), ((FilterEffect) list2.get(i)).getType()));
+                }
+            }
+        });
+    }
+}

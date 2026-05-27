@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item type="id" name="NoFilePlist" />
+    <item type="id" name="NoFileVlist" />
+    <item type="id" name="bottomActionBar" />
+    <item type="id" name="btnCancel" />
+    <item type="id" name="btnDelete" />
+    <item type="id" name="btnSelectAll" />
+    <item type="id" name="btnShare" />
+    <item type="id" name="recyclerView" />
+    <item type="id" name="toolbar" />
+</resources>

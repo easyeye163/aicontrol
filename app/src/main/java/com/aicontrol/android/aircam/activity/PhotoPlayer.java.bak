@@ -1,0 +1,406 @@
+package com.aicontrol.android.aircam.activity;
+
+import com.aicontrol.android.R;
+
+import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Matrix;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
+import android.os.Bundle;
+import android.util.DisplayMetrics;
+import android.view.GestureDetector;
+import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
+import android.view.View;
+import android.view.animation.AlphaAnimation;
+import android.view.animation.Animation;
+import android.view.animation.LinearInterpolator;
+import android.view.animation.RotateAnimation;
+import android.widget.ImageView;
+import android.widget.RelativeLayout;
+import android.widget.TextView;
+import android.widget.Toast;
+import androidx.core.content.FileProvider;
+import com.aicontrol.android.aircam.base.BaseActivity;
+import com.aicontrol.android.aircam.utils.ConfigUtils;
+import com.aicontrol.android.aircam.utils.DisplayUtils;
+import com.aicontrol.android.aircam.view.dialog.AlartDialog;
+import java.io.File;
+import java.util.ArrayList;
+
+/* loaded from: classes5.dex */
+public class PhotoPlayer extends BaseActivity implements View.OnClickListener {
+    private static final int CHOOSE_CODE = 998;
+    private static final int FILTER_CODE = 6565;
+    private static final float MAX_SCALE = 3.0f;
+    private static final float MIN_SCALE = 0.5f;
+    private View bottomBar;
+    private ImageView btnDelete;
+    private ImageView btnFilter;
+    private ImageView btnReturn;
+    private ImageView btnRotate;
+    private ImageView btnShare;
+    private Bundle bundle;
+    private GestureDetector gestureDetector;
+    private ArrayList<String> imagePaths;
+    private ScaleGestureDetector scaleGestureDetector;
+    private ImageView showjpg;
+    private View topBar;
+    private TextView tvTitle;
+    private String path = null;
+    private int screenWidth = 0;
+    private int screenHeight = 0;
+    private int bRotate = 0;
+    Matrix matrix = null;
+    int w = 0;
+    int h = 0;
+    private float scaleFactor = 1.0f;
+    private int currentImageIndex = 0;
+    private boolean isBarsVisible = true;
+
+    static /* synthetic */ float access$532(PhotoPlayer photoPlayer, float f) {
+        float f2 = photoPlayer.scaleFactor * f;
+        photoPlayer.scaleFactor = f2;
+        return f2;
+    }
+
+    @Override // androidx.fragment.app.FragmentActivity, androidx.activity.ComponentActivity, androidx.core.app.ComponentActivity, android.app.Activity
+    public void onCreate(Bundle bundle) {
+        super.onCreate(bundle);
+        setContentView(R.layout.photoplayer);
+        DisplayMetrics metrics = DisplayUtils.getMetrics(this);
+        this.screenWidth = metrics.widthPixels;
+        this.screenHeight = metrics.heightPixels;
+        initViews();
+        initData();
+        initGestures();
+    }
+
+    private void initViews() {
+        this.showjpg = (ImageView) findViewById(R.id.imgPhotoPlayer);
+        this.topBar = findViewById(R.id.topBar);
+        this.bottomBar = findViewById(R.id.bottomBar);
+        this.btnReturn = (ImageView) findViewById(R.id.btnReturnPlayer);
+        this.btnRotate = (ImageView) findViewById(R.id.btnRotatePhoto);
+        this.btnShare = (ImageView) findViewById(R.id.btnShare);
+        this.btnFilter = (ImageView) findViewById(R.id.img_filter);
+        this.btnDelete = (ImageView) findViewById(R.id.btnDelete);
+        this.tvTitle = (TextView) findViewById(R.id.tvTitle);
+        this.btnReturn.setOnClickListener(this);
+        this.btnRotate.setOnClickListener(this);
+        this.btnShare.setOnClickListener(this);
+        this.btnFilter.setOnClickListener(this);
+        this.btnDelete.setOnClickListener(this);
+    }
+
+    private void initData() {
+        Bundle extras = getIntent().getExtras();
+        this.bundle = extras;
+        if (extras != null) {
+            this.path = extras.getString("showjpg");
+            this.imagePaths = getIntent().getStringArrayListExtra("photoList");
+            this.currentImageIndex = getIntent().getIntExtra("selectedPhotoIndex", 0);
+        }
+        loadAndDisplayImage();
+        this.matrix = this.showjpg.getImageMatrix();
+        int playBackRotateCfg = ConfigUtils.getPlayBackRotateCfg(this);
+        this.bRotate = playBackRotateCfg;
+        if (playBackRotateCfg == 1) {
+            this.showjpg.setRotation(180.0f);
+        } else {
+            this.showjpg.setRotation(0.0f);
+        }
+    }
+
+    private void initGestures() {
+        this.scaleGestureDetector = new ScaleGestureDetector(this, new ScaleListener());
+        this.gestureDetector = new GestureDetector(this, new GestureListener());
+    }
+
+    private void loadAndDisplayImage() {
+        int round;
+        if (this.path == null) {
+            return;
+        }
+        TextView textView = this.tvTitle;
+        if (textView != null && this.imagePaths != null) {
+            textView.setText((this.currentImageIndex + 1) + " of " + this.imagePaths.size());
+        }
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(this.path, options);
+        this.w = options.outWidth;
+        int i = options.outHeight;
+        this.h = i;
+        int i2 = this.w;
+        float f = i2 / i;
+        int i3 = this.screenWidth;
+        int i4 = this.screenHeight;
+        if (f > i3 / i4) {
+            round = Math.round(i2 / i3);
+        } else {
+            round = Math.round(i / i4);
+        }
+        int max = Math.max(1, round);
+        options.inJustDecodeBounds = false;
+        options.inSampleSize = max;
+        Bitmap decodeFile = BitmapFactory.decodeFile(this.path, options);
+        if (decodeFile != null) {
+            RelativeLayout.LayoutParams layoutParams = new RelativeLayout.LayoutParams(-2, -2);
+            layoutParams.addRule(13);
+            this.showjpg.setLayoutParams(layoutParams);
+            this.showjpg.setScaleType(ImageView.ScaleType.MATRIX);
+            this.showjpg.setAdjustViewBounds(true);
+            this.showjpg.setImageBitmap(decodeFile);
+            this.showjpg.setMaxWidth(this.screenWidth);
+            this.showjpg.setMaxHeight(this.screenHeight);
+            Matrix matrix = new Matrix();
+            this.matrix = matrix;
+            this.showjpg.setImageMatrix(matrix);
+            this.scaleFactor = 1.0f;
+            this.showjpg.setScaleX(1.0f);
+            this.showjpg.setScaleY(this.scaleFactor);
+        }
+    }
+
+    private void shareImage() {
+        if (this.path == null) {
+            return;
+        }
+        Uri uriForFile = FileProvider.getUriForFile(this, getPackageName() + ".fileprovider", new File(this.path));
+        Intent intent = new Intent("android.intent.action.SEND");
+        intent.setType("image/*");
+        intent.putExtra("android.intent.extra.STREAM", uriForFile);
+        intent.addFlags(1);
+        startActivity(Intent.createChooser(intent, "Share Image"));
+    }
+
+    private void deleteImage() {
+        AlartDialog alartDialog = new AlartDialog(this, R.style.dialog);
+        alartDialog.setTitle("Delete");
+        alartDialog.setContent("Are you sure you want to delete this photo?");
+        alartDialog.setAlartClickListener(new AlartDialog.AlartDialogClick() { // from class: com.tzh.wifi.wificam.activity.PhotoPlayer.1
+            @Override // com.tzh.wifi.wificam.view.dialog.AlartDialog.AlartDialogClick
+            public void OnCancelClick() {
+            }
+
+            @Override // com.tzh.wifi.wificam.view.dialog.AlartDialog.AlartDialogClick
+            public void OnConfirmClick() {
+                PhotoPlayer.this.performDelete();
+            }
+        });
+        alartDialog.show();
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public void performDelete() {
+        if (this.path == null) {
+            return;
+        }
+        File file = new File(this.path);
+        if (file.exists()) {
+            file.delete();
+            MediaScannerConnection.scanFile(this, new String[]{this.path}, null, null);
+        }
+        ArrayList<String> arrayList = this.imagePaths;
+        if (arrayList != null && arrayList.size() > 1) {
+            this.imagePaths.remove(this.currentImageIndex);
+            if (this.currentImageIndex >= this.imagePaths.size()) {
+                this.currentImageIndex = this.imagePaths.size() - 1;
+            }
+            this.path = this.imagePaths.get(this.currentImageIndex);
+            loadAndDisplayImage();
+            return;
+        }
+        finish();
+    }
+
+    @Override // com.tzh.wifi.wificam.base.BaseActivity, android.view.View.OnClickListener
+    public void onClick(View view) {
+        int id = view.getId();
+        if (id == R.id.btnReturnPlayer) {
+            finish();
+            overridePendingTransition(17432576, android.R.anim.fade_out);
+            return;
+        }
+        if (id != R.id.btnRotatePhoto) {
+            if (id == R.id.img_filter) {
+                // FilterActivity disabled (GPUImageFilterTools moved to .bak)
+                return;
+            } else if (id == R.id.btnShare) {
+                shareImage();
+                return;
+            } else {
+                if (id == R.id.btnDelete) {
+                    deleteImage();
+                    return;
+                }
+                return;
+            }
+        }
+        if (this.bRotate == 0) {
+            this.bRotate = 1;
+            RotateAnimation rotateAnimation = new RotateAnimation(0.0f, 180.0f, 1, 0.5f, 1, 0.5f);
+            rotateAnimation.setFillAfter(true);
+            rotateAnimation.setDuration(500L);
+            rotateAnimation.setRepeatCount(0);
+            rotateAnimation.setInterpolator(new LinearInterpolator());
+            this.showjpg.startAnimation(rotateAnimation);
+        } else {
+            RotateAnimation rotateAnimation2 = new RotateAnimation(180.0f, 0.0f, 1, 0.5f, 1, 0.5f);
+            rotateAnimation2.setFillAfter(true);
+            rotateAnimation2.setDuration(500L);
+            rotateAnimation2.setRepeatCount(0);
+            rotateAnimation2.setInterpolator(new LinearInterpolator());
+            this.showjpg.startAnimation(rotateAnimation2);
+            this.bRotate = 0;
+        }
+        ConfigUtils.writePlayBackRotateCfg(this, this.bRotate);
+    }
+
+    @Override // androidx.activity.ComponentActivity, android.app.Activity
+    public void onBackPressed() {
+        super.onBackPressed();
+        overridePendingTransition(17432576, android.R.anim.fade_out);
+    }
+
+    @Override // androidx.fragment.app.FragmentActivity, androidx.activity.ComponentActivity, android.app.Activity
+    protected void onActivityResult(int i, int i2, Intent intent) {
+        Bitmap decodeFile;
+        super.onActivityResult(i, i2, intent);
+        if (i != FILTER_CODE || i2 != 15 || intent == null || (decodeFile = BitmapFactory.decodeFile(intent.getExtras().getString("filter_image"))) == null) {
+            return;
+        }
+        this.showjpg.setImageBitmap(decodeFile);
+    }
+
+    @Override // android.app.Activity
+    public boolean onTouchEvent(MotionEvent motionEvent) {
+        this.scaleGestureDetector.onTouchEvent(motionEvent);
+        this.gestureDetector.onTouchEvent(motionEvent);
+        return true;
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public void toggleBars() {
+        if (this.isBarsVisible) {
+            hideBars();
+        } else {
+            showBars();
+        }
+    }
+
+    private void hideBars() {
+        if (this.isBarsVisible) {
+            this.isBarsVisible = false;
+            AlphaAnimation alphaAnimation = new AlphaAnimation(1.0f, 0.0f);
+            alphaAnimation.setInterpolator(new LinearInterpolator());
+            alphaAnimation.setDuration(300L);
+            alphaAnimation.setAnimationListener(new Animation.AnimationListener() { // from class: com.tzh.wifi.wificam.activity.PhotoPlayer.2
+                @Override // android.view.animation.Animation.AnimationListener
+                public void onAnimationRepeat(Animation animation) {
+                }
+
+                @Override // android.view.animation.Animation.AnimationListener
+                public void onAnimationStart(Animation animation) {
+                }
+
+                @Override // android.view.animation.Animation.AnimationListener
+                public void onAnimationEnd(Animation animation) {
+                    PhotoPlayer.this.topBar.setVisibility(8);
+                    PhotoPlayer.this.bottomBar.setVisibility(8);
+                }
+            });
+            this.topBar.startAnimation(alphaAnimation);
+            this.bottomBar.startAnimation(alphaAnimation);
+        }
+    }
+
+    private void showBars() {
+        if (this.isBarsVisible) {
+            return;
+        }
+        this.isBarsVisible = true;
+        this.topBar.setVisibility(0);
+        this.bottomBar.setVisibility(0);
+        AlphaAnimation alphaAnimation = new AlphaAnimation(0.0f, 1.0f);
+        alphaAnimation.setInterpolator(new LinearInterpolator());
+        alphaAnimation.setDuration(300L);
+        this.topBar.startAnimation(alphaAnimation);
+        this.bottomBar.startAnimation(alphaAnimation);
+    }
+
+    private class ScaleListener extends ScaleGestureDetector.SimpleOnScaleGestureListener {
+        private ScaleListener() {
+        }
+
+        @Override // android.view.ScaleGestureDetector.SimpleOnScaleGestureListener, android.view.ScaleGestureDetector.OnScaleGestureListener
+        public boolean onScale(ScaleGestureDetector scaleGestureDetector) {
+            PhotoPlayer.access$532(PhotoPlayer.this, scaleGestureDetector.getScaleFactor());
+            PhotoPlayer photoPlayer = PhotoPlayer.this;
+            photoPlayer.scaleFactor = Math.max(0.5f, Math.min(photoPlayer.scaleFactor, PhotoPlayer.MAX_SCALE));
+            PhotoPlayer.this.showjpg.setScaleX(PhotoPlayer.this.scaleFactor);
+            PhotoPlayer.this.showjpg.setScaleY(PhotoPlayer.this.scaleFactor);
+            return true;
+        }
+    }
+
+    private class GestureListener extends GestureDetector.SimpleOnGestureListener {
+        private static final int SWIPE_THRESHOLD = 100;
+        private static final int SWIPE_VELOCITY_THRESHOLD = 100;
+
+        private GestureListener() {
+        }
+
+        @Override // android.view.GestureDetector.SimpleOnGestureListener, android.view.GestureDetector.OnDoubleTapListener
+        public boolean onSingleTapConfirmed(MotionEvent motionEvent) {
+            PhotoPlayer.this.toggleBars();
+            return true;
+        }
+
+        @Override // android.view.GestureDetector.SimpleOnGestureListener, android.view.GestureDetector.OnGestureListener
+        public boolean onFling(MotionEvent motionEvent, MotionEvent motionEvent2, float f, float f2) {
+            if (PhotoPlayer.this.scaleFactor > 1.0f) {
+                return false;
+            }
+            float x = motionEvent2.getX() - motionEvent.getX();
+            if (Math.abs(x) <= Math.abs(motionEvent2.getY() - motionEvent.getY()) || Math.abs(x) <= 100.0f || Math.abs(f) <= 100.0f) {
+                return false;
+            }
+            if (x > 0.0f) {
+                PhotoPlayer.this.showPreviousImage();
+                return true;
+            }
+            PhotoPlayer.this.showNextImage();
+            return true;
+        }
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public void showNextImage() {
+        if (this.imagePaths != null && this.currentImageIndex < this.imagePaths.size() - 1) {
+            int i = this.currentImageIndex + 1;
+            this.currentImageIndex = i;
+            this.path = this.imagePaths.get(i);
+            loadAndDisplayImage();
+            return;
+        }
+        Toast.makeText(this, "Last image", 0).show();
+    }
+
+    /* JADX INFO: Access modifiers changed from: private */
+    public void showPreviousImage() {
+        int i;
+        ArrayList<String> arrayList = this.imagePaths;
+        if (arrayList != null && (i = this.currentImageIndex) > 0) {
+            int i2 = i - 1;
+            this.currentImageIndex = i2;
+            this.path = arrayList.get(i2);
+            loadAndDisplayImage();
+            return;
+        }
+        Toast.makeText(this, "First image", 0).show();
+    }
+}

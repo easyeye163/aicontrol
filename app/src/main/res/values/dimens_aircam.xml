@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="x80">80dp</dimen>
+    <dimen name="y10">10dp</dimen>
+    <dimen name="y15">15dp</dimen>
+    <dimen name="y21">21dp</dimen>
+    <dimen name="y40">40dp</dimen>
+    <dimen name="y136">136dp</dimen>
+    <dimen name="y168">168dp</dimen>
+    <dimen name="y170">170dp</dimen>
+    <dimen name="y282">282dp</dimen>
+    <dimen name="y300">300dp</dimen>
+    <dimen name="y350">350dp</dimen>
+    <dimen name="y352">352dp</dimen>
+    <dimen name="y560">560dp</dimen>
+</resources>

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <View android:id="@+id/btnRotate180" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/iv_bg_videoplayer" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/iv_next_videoplayer" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/iv_pause_videoplayer" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/iv_prev_videoplayer" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/iv_stop_videoplayer" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/sb_timebar_videoplayer" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/sb_voice_control_videoplayer" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/surfaceLayout" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/toolbar" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/tv_cur_time_videoplayer" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/tv_left_time_videoplayer" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/videoPlaySurface" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/vpscreenLayout" android:layout_width="1dp" android:layout_height="1dp" />
+</FrameLayout>

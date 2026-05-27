@@ -129,6 +129,9 @@ class HomeActivity : BaseActivity() {
         findViewById<View>(R.id.btnCar).setOnClickListener {
             startActivity(Intent(this, CarControlActivity::class.java))
         }
+        findViewById<View>(R.id.btnAirCam).setOnClickListener {
+            startActivity(Intent(this, com.aicontrol.android.aircam.activity.PlayActivity::class.java))
+        }
 
         cardAccessibility = findViewById(R.id.cardAccessibility)
         cardNotification = findViewById(R.id.cardNotification)

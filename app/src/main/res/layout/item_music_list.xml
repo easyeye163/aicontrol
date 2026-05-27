@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <View android:id="@+id/item_music_icon" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/item_music_list_confirm" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/item_music_list_duration" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/item_music_list_position" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/item_music_list_song" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/item_music_list_start" android:layout_width="1dp" android:layout_height="1dp" />
+</FrameLayout>

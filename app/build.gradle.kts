@@ -43,6 +43,8 @@ android {
             abiFilters.add("arm64-v8a")
         }
 
+        // javaCompileOptions removed - no annotation processors needing options
+
         // externalNativeBuild disabled — using prebuilt .so in jniLibs
         // externalNativeBuild {
         //     cmake {
@@ -166,6 +168,20 @@ dependencies {
     implementation(libs.camera.lifecycle)
     implementation(libs.camera.view)
 
+    // ExoPlayer (video playback)
+    implementation("com.google.android.exoplayer:exoplayer:2.19.1")
+
+    // AirCam - Drone Control
+    implementation("io.reactivex.rxjava2:rxjava:2.2.21")
+    implementation("io.reactivex.rxjava2:rxandroid:2.1.1")
+    implementation("org.greenrobot:eventbus:3.3.1")
+    implementation("jp.co.cyberagent.android:gpuimage:2.1.0")
+    // TODO: pocketsphinx not available on standard maven - needs manual AAR
+    // implementation("edu.cmu.pocketsphinx:pocketsphinx-android:5prealpha-alpha1")
+    implementation("org.tensorflow:tensorflow-lite:2.13.0")
+    implementation("org.tensorflow:tensorflow-lite-support:0.4.4")
+    // TODO: kongzue dialog not available - will use custom dialogs instead
+    // implementation("com.kongzue:dialog:3.2.4")
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

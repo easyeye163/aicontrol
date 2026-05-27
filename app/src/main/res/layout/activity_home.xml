@@ -22,6 +22,7 @@
         android:layout_marginTop="12pt"
         app:layout_constraintTop_toBottomOf="@id/toolbar">
 
+        <!-- 对话按钮 - 暂时隐藏 -->
         <LinearLayout
             android:id="@+id/btnChat"
             android:layout_width="0dp"
@@ -30,6 +31,7 @@
             android:orientation="vertical"
             android:gravity="center"
             android:padding="12pt"
+            android:visibility="gone"
             android:background="@color/colorBgSecondary">
 
             <ImageView
@@ -48,6 +50,7 @@
 
         </LinearLayout>
 
+        <!-- 技能按钮 - 暂时隐藏 -->
         <LinearLayout
             android:id="@+id/btnSkills"
             android:layout_width="0dp"
@@ -57,6 +60,7 @@
             android:gravity="center"
             android:padding="12pt"
             android:layout_marginStart="8pt"
+            android:visibility="gone"
             android:background="@color/colorBgSecondary">
 
             <ImageView
@@ -75,6 +79,7 @@
 
         </LinearLayout>
 
+        <!-- 时间线按钮 - 暂时隐藏 -->
         <LinearLayout
             android:id="@+id/btnTimeline"
             android:layout_width="0dp"
@@ -84,6 +89,7 @@
             android:gravity="center"
             android:padding="12pt"
             android:layout_marginStart="8pt"
+            android:visibility="gone"
             android:background="@color/colorBgSecondary">
 
             <ImageView
@@ -124,6 +130,34 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6pt"
                 android:text="@string/home_btn_car"
+                android:textColor="@color/colorTextPrimary"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+        <!-- 无人机控制按钮 -->
+        <LinearLayout
+            android:id="@+id/btnAirCam"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="12pt"
+            android:layout_marginStart="8pt"
+            android:background="@color/colorBgSecondary">
+
+            <ImageView
+                android:layout_width="32pt"
+                android:layout_height="32pt"
+                android:src="@drawable/ic_aircam"
+                app:tint="@color/colorBrandPrimary" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6pt"
+                android:text="@string/home_btn_aircam"
                 android:textColor="@color/colorTextPrimary"
                 android:textSize="12sp" />
 

@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Drone / Quadcopter icon -->
+    <!-- Center body -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M10.5,10.5h3v3h-3z" />
+    <!-- Top-left arm + propeller -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M10.5,11.5L4,7 M2,5a2,2 0,1 0,4 0a2,2 0,1 0,-4 0" />
+    <!-- Top-right arm + propeller -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M13.5,11.5L20,7 M18,5a2,2 0,1 0,4 0a2,2 0,1 0,-4 0" />
+    <!-- Bottom-left arm + propeller -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M10.5,12.5L4,17 M2,19a2,2 0,1 0,4 0a2,2 0,1 0,-4 0" />
+    <!-- Bottom-right arm + propeller -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M13.5,12.5L20,17 M18,19a2,2 0,1 0,4 0a2,2 0,1 0,-4 0" />
+</vector>

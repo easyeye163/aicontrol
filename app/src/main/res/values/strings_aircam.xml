@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="alart_agree_txt">同意</string>
+    <string name="alart_agree_txt_en">Agree</string>
+    <string name="alart_disagree_txt">不同意</string>
+    <string name="alart_disagree_txt_en">Disagree</string>
+
+    <string name="alart_cancel_txt_cn">取消</string>
+    <string name="alart_cancel_txt_dutch">Annuleren</string>
+    <string name="alart_cancel_txt_en">Cancel</string>
+    <string name="alart_cancel_txt_fra">Annuler</string>
+    <string name="alart_cancel_txt_span">Cancelar</string>
+
+    <string name="alart_confirm_txt_cn">确认</string>
+    <string name="alart_confirm_txt_dutch">Bevestigen</string>
+    <string name="alart_confirm_txt_en">Confirm</string>
+    <string name="alart_confirm_txt_fra">Confirmer</string>
+    <string name="alart_confirm_txt_span">Confirmar</string>
+
+    <string name="alart_content_txt_dutch">Weet je het zeker?</string>
+    <string name="alart_content_txt_en">Are you sure?</string>
+    <string name="alart_content_txt_fra">Êtes-vous sûr?</string>
+    <string name="alart_content_txt_span">¿Estás seguro?</string>
+
+    <string name="alart_title_txt_cn">提示</string>
+    <string name="alart_title_txt_dutch">Tip</string>
+    <string name="alart_title_txt_en">Alert</string>
+    <string name="alart_title_txt_fra">Alerte</string>
+    <string name="alart_title_txt_span">Alerta</string>
+
+    <string name="close_music_cn">关闭音乐</string>
+    <string name="close_music_en">Close Music</string>
+    <string name="confirm_music_cn">确认</string>
+    <string name="confirm_music_en">Confirm</string>
+
+    <string name="finish_record_cn">结束录像</string>
+    <string name="finish_record_en">Finish Record</string>
+
+    <string name="free_space_not_enough_cn">存储空间不足</string>
+    <string name="free_space_not_enough_dutch">Niet genoeg opslagruimte</string>
+    <string name="free_space_not_enough_en">Not enough storage space</string>
+    <string name="free_space_not_enough_fra">Pas assez d\'espace de stockage</string>
+    <string name="free_space_not_enough_span">No hay suficiente espacio de almacenamiento</string>
+
+    <string name="gsensor_not_support_cn">当前不支持该功能</string>
+    <string name="gsensor_not_support_dutch">Niet ondersteund</string>
+    <string name="gsensor_not_support_en">Not supported</string>
+    <string name="gsensor_not_support_fra">Non supporté</string>
+    <string name="gsensor_not_support_span">No soportado</string>
+
+    <string name="local_music_cn">本地音乐</string>
+    <string name="local_music_en">Local Music</string>
+
+    <string name="location_alart_title_txt">位置权限</string>
+    <string name="location_alart_title_txt_en">Location Permission</string>
+    <string name="lock_screen_click_dowon">请先解锁</string>
+
+    <string name="not_supported_change_cn">暂不支持切换</string>
+    <string name="not_supported_change_en">Switch not supported</string>
+
+    <string name="play_hide_screen_Splite_cn">分屏</string>
+    <string name="play_hide_screen_Splite_dutch">Splitscreen</string>
+    <string name="play_hide_screen_Splite_en">Split</string>
+    <string name="play_hide_screen_Splite_fra">Fractionner</string>
+    <string name="play_hide_screen_Splite_span">Dividir</string>
+
+    <string name="play_hide_screen_gsensor_cn">陀螺仪</string>
+    <string name="play_hide_screen_gsensor_dutch">Gyroscoop</string>
+    <string name="play_hide_screen_gsensor_en">G-Sensor</string>
+    <string name="play_hide_screen_gsensor_fra">Gyroscope</string>
+    <string name="play_hide_screen_gsensor_span">Giroscopio</string>
+
+    <string name="play_hide_screen_rec_cn">录像</string>
+    <string name="play_hide_screen_rec_dutch">Opnemen</string>
+    <string name="play_hide_screen_rec_en">Record</string>
+    <string name="play_hide_screen_rec_fra">Enregistrer</string>
+    <string name="play_hide_screen_rec_span">Grabar</string>
+
+    <string name="play_hide_screen_rudder_cn">摇杆</string>
+    <string name="play_hide_screen_rudder_dutch">Joystick</string>
+    <string name="play_hide_screen_rudder_en">Rudder</string>
+    <string name="play_hide_screen_rudder_fra">Manche</string>
+    <string name="play_hide_screen_rudder_span">Palanca</string>
+
+    <string name="please_connect_wifi_cn">请连接WiFi</string>
+    <string name="please_connect_wifi_dutch">Verbind WiFi</string>
+    <string name="please_connect_wifi_en">Please connect WiFi</string>
+    <string name="please_connect_wifi_fra">Connectez le WiFi</string>
+    <string name="please_connect_wifi_span">Conecte WiFi</string>
+
+    <string name="please_power_down_helicope_cn">请关闭飞机</string>
+    <string name="please_power_down_helicope_dutch">Schakel af</string>
+    <string name="please_power_down_helicope_en">Please power off</string>
+    <string name="please_power_down_helicope_fra">Éteignez s\'il vous plaît</string>
+    <string name="please_power_down_helicope_span">Apague por favor</string>
+
+    <string name="please_power_on_helicope_cn">请打开飞机</string>
+    <string name="please_power_on_helicope_dutch">Schakel in</string>
+    <string name="please_power_on_helicope_en">Please power on</string>
+    <string name="please_power_on_helicope_fra">Allumez s\'il vous plaît</string>
+    <string name="please_power_on_helicope_span">Encienda por favor</string>
+
+    <string name="popular_music_cn">流行音乐</string>
+    <string name="popular_music_en">Popular Music</string>
+
+    <string name="privacy_alart_check_txt">我已阅读并同意</string>
+    <string name="privacy_alart_check_txt_en">I have read and agree</string>
+    <string name="privacy_alart_content_txt">为了保障您的权益，请阅读隐私政策</string>
+    <string name="privacy_alart_content_txt_en">To protect your rights, please read the privacy policy</string>
+    <string name="privacy_policy">隐私政策</string>
+    <string name="privacy_policy_en">Privacy Policy</string>
+    <string name="privacy_policy_content">隐私政策内容</string>
+    <string name="privacy_policy_content_en">Privacy Policy Content</string>
+    <string name="privacy_policy_title_txt">隐私政策</string>
+    <string name="privacy_policy_title_txt_en">Privacy Policy</string>
+
+    <string name="select_music_cn">选择音乐</string>
+    <string name="select_music_en">Select Music</string>
+
+    <string name="start_record_cn">开始录像</string>
+    <string name="start_record_en">Start Record</string>
+    <string name="start_snap_cn">拍照</string>
+    <string name="start_snap_en">Take Photo</string>
+
+    <string name="success_connect_wifi_cn">WiFi已连接</string>
+    <string name="success_connect_wifi_dutch">WiFi verbonden</string>
+    <string name="success_connect_wifi_en">WiFi Connected</string>
+    <string name="success_connect_wifi_fra">WiFi connecté</string>
+    <string name="success_connect_wifi_span">WiFi conectado</string>
+
+    <string name="user_agreement">用户协议</string>
+    <string name="user_agreement_en">User Agreement</string>
+    <string name="user_agreement_content">用户协议内容</string>
+    <string name="user_agreement_content_en">User Agreement Content</string>
+    <string name="user_agreement_title_txt">用户协议</string>
+    <string name="user_agreement_title_txt_en">User Agreement</string>
+</resources>

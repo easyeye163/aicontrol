@@ -236,6 +236,46 @@
             android:exported="false"
             android:screenOrientation="portrait" />
 
+        <!-- AirCam Drone Control -->
+        <activity
+            android:name=".aircam.activity.PlayActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.AiControl" />
+        <activity
+            android:name=".aircam.activity.VideoActivity"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.AiControl" />
+        <activity
+            android:name=".aircam.activity.VideoViewPlay"
+            android:theme="@style/Theme.AiControl" />
+        <activity
+            android:name=".aircam.activity.PhotoListActivity"
+            android:theme="@style/Theme.AiControl" />
+        <activity
+            android:name=".aircam.activity.PhotoPlayer"
+            android:theme="@style/Theme.AiControl" />
+        <activity
+            android:name=".aircam.activity.VideoListActivity"
+            android:theme="@style/Theme.AiControl" />
+        <!-- FilterActivity disabled - GPUImageFilterTools moved to .bak -->
+        <!-- <activity
+            android:name=".aircam.activity.FilterActivity"
+            android:theme="@style/Theme.AiControl" /> -->
+        <activity
+            android:name=".aircam.activity.HelpActivity"
+            android:theme="@style/Theme.AiControl" />
+        <activity
+            android:name=".aircam.activity.MusicActivity"
+            android:theme="@style/Theme.AiControl" />
+        <!-- PlayBackActivity disabled - ad SDK dependency removed -->
+        <!-- <activity
+            android:name=".aircam.activity.PlayBackActivity"
+            android:theme="@style/Theme.AiControl" /> -->
+        <activity
+            android:name=".aircam.view.PrivacyPolicyActivity"
+            android:theme="@style/Theme.AiControl" />
+
     </application>
 
 </manifest>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <View android:id="@+id/alart_btn_agree" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/alart_btn_disagree" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/alart_cancel_layout" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/alart_confirm_layout" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/alart_content" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/alart_title" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/checkButton" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/checkButtonText" android:layout_width="1dp" android:layout_height="1dp" />
+</FrameLayout>

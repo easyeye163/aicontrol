@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+    <View android:id="@+id/ivLeftImage" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/ivRightImage" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnVrPlay" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/playRudder" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/tvScaleValue" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/tvVoiceWord" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/playLeftSlider" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/playRightSlider" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/playCenterSlider" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/lyZoomView" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayRecord" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlaySnap" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlaySpeed" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayAutoPhoto" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayLock" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayButton" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnMp3Switch" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/img_filter_play" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/img_voice_control" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayPath" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayRoate" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayGensor" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayStayHigh" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayOneKeyFly" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayOneKeyLand" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnMengencyStop" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/ly_head_second" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/lySliderBottom" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/lySliderCenter" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/lyMengencyStop" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/ly_record_time" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/ivRecordIcon" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/tvRecordTime" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/tvAutoPhoto" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/ivLoading" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/ivRoundMove" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayRev" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/img_video_mp3" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayNoHead" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnChangeOrientation" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnCameraSwitch" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayReturn" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayCheckout" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnMp3Switch" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayBack" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlaySnap" android:layout_width="1dp" android:layout_height="1dp" />
+    <View android:id="@+id/btnPlayButton" android:layout_width="1dp" android:layout_height="1dp" />
+</FrameLayout>
