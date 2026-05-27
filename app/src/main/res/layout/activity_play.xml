@@ -45,8 +45,5 @@
     <View android:id="@+id/btnCameraSwitch" android:layout_width="1dp" android:layout_height="1dp" />
     <View android:id="@+id/btnPlayReturn" android:layout_width="1dp" android:layout_height="1dp" />
     <View android:id="@+id/btnPlayCheckout" android:layout_width="1dp" android:layout_height="1dp" />
-    <View android:id="@+id/btnMp3Switch" android:layout_width="1dp" android:layout_height="1dp" />
     <View android:id="@+id/btnPlayBack" android:layout_width="1dp" android:layout_height="1dp" />
-    <View android:id="@+id/btnPlaySnap" android:layout_width="1dp" android:layout_height="1dp" />
-    <View android:id="@+id/btnPlayButton" android:layout_width="1dp" android:layout_height="1dp" />
 </FrameLayout>
