@@ -40,6 +40,7 @@ import com.aicontrol.android.aircam.presenter.listener.ITargetBitmapFixListener;
 import com.aicontrol.android.aircam.utils.BmpUtils;
 import com.aicontrol.android.aircam.utils.ConfigUtils;
 import com.aicontrol.android.aircam.utils.Constants;
+import com.aicontrol.android.aircam.utils.DroneConfig;
 import com.aicontrol.android.aircam.utils.FileChooseUtil;
 import com.aicontrol.android.aircam.utils.LocalUtil;
 import com.aicontrol.android.aircam.utils.LogUtils;
@@ -157,6 +158,7 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
     private boolean bWiFiConnect = false;
     private int nAutoPhoto = 3;
     private boolean bRotateActive = false;
+    private int lastRotateAction = -1; // Track rotation state for HTTP GET: 0=center, 1=left, 2=right
     private RelativeLayout lyRudderMap = null;
     private long tStart = 0;
     public final int MSG_SPEECH_RECOGNIZER = 1;
@@ -1280,9 +1282,11 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
 
     @Override // com.tzh.wifi.wificam.view.listener.IRudderListener
     public void onDirNotify(int i, int i2, int i3) {
-        // Swap left/right: rotateAction 1 (originally left) → send right, 2 (originally right) → send left
+        // Send HTTP GET only on discrete state change (left/right/center), not intermediate
+        sendRotateHttpGet(i3);
+
         if (i3 == 1) {
-            WiFiPresenter.getInstance(this).ICmd_DirNotify((byte) 0, (byte) i2);
+            WiFiPresenter.getInstance(this).ICmd_DirNotify((byte) -1, (byte) i2);
             if (this.bRotateActive) {
                 return;
             }
@@ -1292,7 +1296,7 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
             return;
         }
         if (i3 == 2) {
-            WiFiPresenter.getInstance(this).ICmd_DirNotify((byte) -1, (byte) i2);
+            WiFiPresenter.getInstance(this).ICmd_DirNotify((byte) 0, (byte) i2);
             if (this.bRotateActive) {
                 return;
             }
@@ -1322,6 +1326,51 @@ public class PlayActivity extends BaseActivity implements View.OnClickListener, 
             return;
         }
         WiFiPresenter.getInstance(this).ICmd_DirNotify((byte) i, (byte) i2);
+    }
+
+    /**
+     * Send HTTP GET request to drone on rotation state change.
+     * rotateAction: 0=center(no rotation), 1=left, 2=right
+     * Only sends on state change; intermediate states (3,4) are ignored.
+     */
+    private void sendRotateHttpGet(int rotateAction) {
+        if (rotateAction == lastRotateAction) {
+            return; // No state change, skip
+        }
+        lastRotateAction = rotateAction;
+
+        final String direction;
+        if (rotateAction == 1) {
+            direction = "left";
+        } else if (rotateAction == 2) {
+            direction = "right";
+        } else if (rotateAction == 0) {
+            direction = "stop";
+        } else {
+            return; // Intermediate states (3,4) - no request
+        }
+
+        DroneConfig.Config config = DroneConfig.loadConfig(this);
+        final String url = "http://" + config.ip + ":" + config.tcpPort + "/?cmd=" + direction;
+        Log.e(TAG, "sendRotateHttpGet: " + url);
+
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) new java.net.URL(url).openConnection();
+                    conn.setRequestMethod("GET");
+                    conn.setConnectTimeout(2000);
+                    conn.setReadTimeout(2000);
+                    conn.connect();
+                    int code = conn.getResponseCode();
+                    conn.disconnect();
+                    Log.e(TAG, "sendRotateHttpGet response: " + code + " for " + direction);
+                } catch (Exception e) {
+                    Log.e(TAG, "sendRotateHttpGet failed: " + e.getMessage());
+                }
+            }
+        }).start();
     }
 
     private static class ResetRunnable implements Runnable {
