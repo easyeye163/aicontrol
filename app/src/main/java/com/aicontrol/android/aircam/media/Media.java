@@ -12,14 +12,20 @@ public class Media {
 
     public Media(Context context) {
         this.mp = null;
-        MediaPlayer create = MediaPlayer.create(context, R.raw.shutter);
-        this.mp = create;
         try {
-            create.prepare();
+            MediaPlayer create = MediaPlayer.create(context, R.raw.shutter);
+            this.mp = create;
+            if (create != null) {
+                create.prepare();
+            } else {
+                Log.e("Media", "shutter resource is invalid or missing, sound disabled");
+            }
         } catch (IOException e) {
             e.printStackTrace();
         } catch (IllegalStateException e2) {
             e2.printStackTrace();
+        } catch (Exception e3) {
+            Log.e("Media", "Failed to load shutter sound", e3);
         }
     }
 

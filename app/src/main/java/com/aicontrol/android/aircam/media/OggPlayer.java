@@ -12,14 +12,20 @@ public class OggPlayer {
 
     public OggPlayer(Context context) {
         this.mp = null;
-        MediaPlayer create = MediaPlayer.create(context, R.raw.rhea);
-        this.mp = create;
         try {
-            create.prepare();
+            MediaPlayer create = MediaPlayer.create(context, R.raw.rhea);
+            this.mp = create;
+            if (create != null) {
+                create.prepare();
+            } else {
+                Log.e("OggPlayer", "rhea resource is invalid or missing, sound disabled");
+            }
         } catch (IOException e) {
             e.printStackTrace();
         } catch (IllegalStateException e2) {
             e2.printStackTrace();
+        } catch (Exception e3) {
+            Log.e("OggPlayer", "Failed to load rhea sound", e3);
         }
     }
 
