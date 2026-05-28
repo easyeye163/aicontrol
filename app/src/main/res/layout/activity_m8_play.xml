@@ -5,13 +5,11 @@
     android:layout_height="match_parent"
     android:background="#000000">
 
-    <!-- Video stream display -->
-    <ImageView
-        android:id="@+id/ivM8Video"
+    <!-- Video stream display (SurfaceView for MediaCodec hardware decode) -->
+    <SurfaceView
+        android:id="@+id/svM8Video"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:scaleType="fitCenter"
-        android:contentDescription="M8 drone video" />
+        android:layout_height="match_parent" />
 
     <!-- Top bar -->
     <LinearLayout
