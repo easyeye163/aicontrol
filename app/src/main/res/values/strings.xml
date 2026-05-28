@@ -251,6 +251,7 @@
     <string name="home_btn_skills">技能</string>
     <string name="home_btn_timeline">时间线</string>
     <string name="home_btn_car">小车控制</string>
+    <string name="home_btn_m8">M8无人机</string>
     <string name="home_btn_aircam">无人机控制</string>
 
     <!-- Chat -->

@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000">
+
+    <!-- Video stream display -->
+    <ImageView
+        android:id="@+id/ivM8Video"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitCenter"
+        android:contentDescription="M8 drone video" />
+
+    <!-- Top bar -->
+    <LinearLayout
+        android:id="@+id/lyTopBar"
+        android:layout_width="match_parent"
+        android:layout_height="50dp"
+        android:layout_gravity="top"
+        android:background="#80000000"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingHorizontal="12dp">
+
+        <!-- Back button -->
+        <ImageButton
+            android:id="@+id/btnBack"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_back_white"
+            android:contentDescription="Back" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:paddingStart="8dp"
+            android:text="M8 无人机"
+            android:textColor="#FFFFFF"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <!-- Config button -->
+        <ImageButton
+            android:id="@+id/btnConfig"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_settings_white"
+            android:contentDescription="Config" />
+    </LinearLayout>
+
+    <!-- Right side control buttons -->
+    <LinearLayout
+        android:id="@+id/lyRightControls"
+        android:layout_width="52dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end|center_vertical"
+        android:layout_marginEnd="8dp"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <!-- Take photo -->
+        <ImageButton
+            android:id="@+id/btnSnap"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_m8_control_btn"
+            android:padding="8dp"
+            android:src="@drawable/ic_snap_white"
+            android:contentDescription="Take photo" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="12dp"
+            android:background="#33FFFFFF" />
+
+        <!-- Speed toggle -->
+        <ImageButton
+            android:id="@+id/btnSpeed"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_m8_control_btn"
+            android:padding="8dp"
+            android:src="@drawable/ic_speed_white"
+            android:contentDescription="Speed" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="12dp"
+            android:background="#33FFFFFF" />
+
+        <!-- Emergency stop -->
+        <ImageButton
+            android:id="@+id/btnEmergency"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_m8_control_btn"
+            android:padding="8dp"
+            android:src="@drawable/ic_stop_white"
+            android:contentDescription="Emergency stop" />
+    </LinearLayout>
+
+    <!-- Left side control buttons -->
+    <LinearLayout
+        android:id="@+id/lyLeftControls"
+        android:layout_width="52dp"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|center_vertical"
+        android:layout_marginStart="8dp"
+        android:gravity="center"
+        android:orientation="vertical">
+
+        <!-- One key take off -->
+        <ImageButton
+            android:id="@+id/btnTakeOff"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_m8_control_btn"
+            android:padding="8dp"
+            android:src="@drawable/ic_takeoff_white"
+            android:contentDescription="Take off" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="12dp"
+            android:background="#33FFFFFF" />
+
+        <!-- One key land -->
+        <ImageButton
+            android:id="@+id/btnLand"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="@drawable/bg_m8_control_btn"
+            android:padding="8dp"
+            android:src="@drawable/ic_land_white"
+            android:contentDescription="Land" />
+    </LinearLayout>
+
+    <!-- WiFi not connected overlay -->
+    <LinearLayout
+        android:id="@+id/lyNotConnected"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#CC000000"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="未连接 M8 无人机"
+            android:textColor="#FFFFFF"
+            android:textSize="20sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="请先连接无人机WiFi热点"
+            android:textColor="#AAAAAA"
+            android:textSize="14sp" />
+
+        <com.aicontrol.android.widget.KButton
+            android:id="@+id/btnGoConfig"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_marginTop="24dp"
+            android:paddingHorizontal="32pt"
+            android:text="连接配置"
+            android:textSize="16pt" />
+    </LinearLayout>
+
+    <!-- Loading spinner -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center"
+        android:visibility="gone" />
+
+    <!-- Status text -->
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="16dp"
+        android:textColor="#AAFFFFFF"
+        android:textSize="12sp"
+        android:visibility="gone" />
+
+</FrameLayout>

@@ -240,6 +240,17 @@
             android:exported="false"
             android:screenOrientation="portrait" />
 
+        <!-- M8 Drone Control -->
+        <activity
+            android:name=".m8.activity.M8PlayActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.AiControl" />
+        <activity
+            android:name=".m8.activity.M8ConfigActivity"
+            android:exported="false"
+            android:screenOrientation="portrait" />
+
         <!-- AirCam Drone Control -->
         <activity
             android:name=".aircam.activity.PlayActivity"

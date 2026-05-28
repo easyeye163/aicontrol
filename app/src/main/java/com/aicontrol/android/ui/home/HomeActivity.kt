@@ -126,6 +126,9 @@ class HomeActivity : BaseActivity() {
         findViewById<View>(R.id.btnTimeline).setOnClickListener {
             startActivity(Intent(this, TimelineActivity::class.java))
         }
+        findViewById<View>(R.id.btnM8).setOnClickListener {
+            startActivity(Intent(this, com.aicontrol.android.m8.activity.M8PlayActivity::class.java))
+        }
         findViewById<View>(R.id.btnCar).setOnClickListener {
             startActivity(Intent(this, CarControlActivity::class.java))
         }
