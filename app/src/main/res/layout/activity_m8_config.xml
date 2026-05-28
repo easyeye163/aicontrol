@@ -29,7 +29,7 @@
                 android:layout_height="wrap_content"
                 android:paddingHorizontal="4pt"
                 android:paddingBottom="16pt"
-                android:text="配置 M8 无人机的连接地址。修改后立即生效，无需重启。"
+                android:text="配置 M8/H8 无人机的连接地址（基于 HY-Chip 协议）。修改后立即生效，无需重启。"
                 android:textColor="@color/colorTextSecondary"
                 android:textSize="14pt" />
 
@@ -56,7 +56,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="48pt"
                     android:background="@null"
-                    android:hint="192.168.1.1"
+                    android:hint="192.168.100.1"
                     android:inputType="textUri"
                     android:maxLines="1"
                     android:paddingHorizontal="16pt"
@@ -73,7 +73,7 @@
                 android:layout_marginTop="20pt"
                 android:paddingHorizontal="4pt"
                 android:paddingBottom="8pt"
-                android:text="视频流端口 (UDP)"
+                android:text="视频流端口 (UDP/RTSP)"
                 android:textColor="@color/colorTextPrimary"
                 android:textSize="14pt"
                 android:textStyle="bold" />
@@ -90,7 +90,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="48pt"
                     android:background="@null"
-                    android:hint="8554"
+                    android:hint="1563"
                     android:inputType="number"
                     android:maxLines="1"
                     android:paddingHorizontal="16pt"
@@ -107,7 +107,7 @@
                 android:layout_marginTop="20pt"
                 android:paddingHorizontal="4pt"
                 android:paddingBottom="8pt"
-                android:text="指令端口 (TCP)"
+                android:text="指令端口 (TCP/JSON)"
                 android:textColor="@color/colorTextPrimary"
                 android:textSize="14pt"
                 android:textStyle="bold" />
@@ -124,7 +124,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="48pt"
                     android:background="@null"
-                    android:hint="8080"
+                    android:hint="4646"
                     android:inputType="number"
                     android:maxLines="1"
                     android:paddingHorizontal="16pt"
@@ -193,7 +193,7 @@
                     android:layout_height="wrap_content"
                     android:paddingHorizontal="16pt"
                     android:paddingVertical="12pt"
-                    android:text="http://192.168.1.1:8554/live"
+                    android:text="192.168.100.1:1563"
                     android:textColor="@color/colorTextSecondary"
                     android:textSize="13pt"
                     android:maxLines="2" />

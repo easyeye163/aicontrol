@@ -18,9 +18,15 @@ import com.aicontrol.android.widget.KButton;
 import java.util.regex.Pattern;
 
 /**
- * M8 Drone configuration page.
- * Allows user to set IP, UDP (video), TCP (control), and FTP ports.
+ * M8/H8 Drone configuration page.
+ * Allows user to set IP, video stream (UDP), control (TCP), and FTP ports.
  * Same visual style as LLM config and Drone config pages.
+ *
+ * Default values from decompiled H8 APK (HY-Chip Technology):
+ * - IP: 192.168.100.1
+ * - Video port (UDP): 1563 (Live555 RTSP/RTP H.264/H.265)
+ * - Control port (TCP): 4646 (JSON commands)
+ * - FTP port: 21
  */
 public class M8ConfigActivity extends BaseActivity {
 
@@ -97,7 +103,7 @@ public class M8ConfigActivity extends BaseActivity {
         String port = etUdpPort.getText().toString().trim();
         if (TextUtils.isEmpty(ip)) ip = M8Config.DEFAULT_IP;
         if (TextUtils.isEmpty(port)) port = String.valueOf(M8Config.DEFAULT_UDP_PORT);
-        tvVideoUrl.setText("http://" + ip + ":" + port + "/live");
+        tvVideoUrl.setText(ip + ":" + port + " (UDP视频流)");
     }
 
     private void saveConfig() {

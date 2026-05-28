@@ -38,7 +38,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:paddingStart="8dp"
-            android:text="M8 无人机"
+            android:text="M8/H8 无人机"
             android:textColor="#FFFFFF"
             android:textSize="18sp"
             android:textStyle="bold" />

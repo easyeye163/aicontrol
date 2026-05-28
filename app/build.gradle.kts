@@ -34,8 +34,8 @@ android {
         applicationId = "com.aicontrol.android"
         minSdk = 28
         targetSdk = 36
-        versionCode = 84
-        versionName = "0.0.84"
+        versionCode = 86
+        versionName = "0.0.86"
         buildConfigField("String", "VERSION_INFO", getVersionGit())
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

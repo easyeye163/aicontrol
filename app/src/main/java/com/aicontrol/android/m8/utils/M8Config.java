@@ -5,29 +5,31 @@ import android.content.SharedPreferences;
 import android.util.Log;
 
 /**
- * M8 Drone connection configuration utility.
- * Stores and retrieves IP, UDP, TCP, and FTP port settings
+ * M8/H8 Drone connection configuration utility.
+ * Stores and retrieves IP, video, control, and FTP port settings
  * using SharedPreferences (same style as KVUtils/DroneConfig).
  *
- * M8 drones typically communicate via:
- * - HTTP MJPEG video stream on UDP port
- * - HTTP GET commands on TCP port for control
- * - FTP for media file transfer
+ * Based on decompiled com.h8 (HY-Chip Technology) APK analysis:
+ * - Video stream: Live555 RTSP/RTP H.264/H.265 via UDP (port 1563)
+ * - Control commands: TCP JSON-based commands (port 4646)
+ * - Flight telemetry: UDP (port 19798)
+ * - FTP file transfer: port 21 (user: HY819, pass: 1663819)
+ * - Default IP: 192.168.100.1
  */
 public class M8Config {
 
     private static final String TAG = "M8Config";
 
-    // Default values for M8 drone
-    public static final String DEFAULT_IP = "192.168.1.1";
-    public static final int DEFAULT_UDP_PORT = 8554;    // Video stream port (MJPEG)
-    public static final int DEFAULT_TCP_PORT = 8080;     // Control command port
+    // Default values based on decompiled H8/M8 APK (HY-Chip Technology)
+    public static final String DEFAULT_IP = "192.168.100.1";
+    public static final int DEFAULT_UDP_PORT = 1563;     // Video stream port (UDP, Live555 RTSP/RTP H.264/H.265)
+    public static final int DEFAULT_TCP_PORT = 4646;     // Control command port (TCP, JSON commands)
     public static final int DEFAULT_FTP_PORT = 21;       // FTP file transfer port
 
     // SharedPreferences
     private static final String PREF_NAME = "m8_config";
     private static final String KEY_IP = "m8_ip";
-    private static final String KEY_UDP_PORT = "m8_udp_port";
+    private static final String KEY_UDP_PORT = "m8_video_port";
     private static final String KEY_TCP_PORT = "m8_tcp_port";
     private static final String KEY_FTP_PORT = "m8_ftp_port";
 
@@ -51,19 +53,24 @@ public class M8Config {
             this.ftpPort = ftpPort;
         }
 
-        /** Get the MJPEG video stream URL */
+        /** Get the video stream address (UDP port for Live555 RTSP/RTP) */
         public String getVideoStreamUrl() {
-            return "http://" + ip + ":" + udpPort + "/live";
+            return ip + ":" + udpPort;
         }
 
-        /** Get the snapshot URL */
-        public String getSnapshotUrl() {
-            return "http://" + ip + ":" + udpPort + "/capture";
+        /** Get the video RTSP URL (if applicable) */
+        public String getRtspUrl() {
+            return "rtsp://" + ip + ":" + udpPort + "/live";
         }
 
-        /** Build a control command URL */
-        public String getCommandUrl(String cmd) {
-            return "http://" + ip + ":" + tcpPort + "/?cmd=" + cmd;
+        /** Get the TCP control address */
+        public String getTcpAddress() {
+            return ip + ":" + tcpPort;
+        }
+
+        /** Get the FTP address */
+        public String getFtpAddress() {
+            return ip + ":" + ftpPort;
         }
     }
 
@@ -91,8 +98,8 @@ public class M8Config {
                 .putInt(KEY_TCP_PORT, config.tcpPort)
                 .putInt(KEY_FTP_PORT, config.ftpPort)
                 .apply();
-        Log.d(TAG, "Config saved: ip=" + config.ip + " udp=" + config.udpPort
-                + " tcp=" + config.tcpPort + " ftp=" + config.ftpPort);
+        Log.d(TAG, "Config saved: ip=" + config.ip + " video=" + config.udpPort
+                + " ctrl=" + config.tcpPort + " ftp=" + config.ftpPort);
     }
 
     /**
@@ -103,10 +110,17 @@ public class M8Config {
     }
 
     /**
-     * Get the configured UDP port.
+     * Get the configured video stream port (UDP).
+     */
+    public static int getVideoPort(Context context) {
+        return loadConfig(context).udpPort;
+    }
+
+    /**
+     * @deprecated Use {@link #getVideoPort(Context)} instead.
      */
     public static int getUdpPort(Context context) {
-        return loadConfig(context).udpPort;
+        return getVideoPort(context);
     }
 
     /**
