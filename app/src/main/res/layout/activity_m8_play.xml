@@ -186,7 +186,7 @@
     <LinearLayout
         android:id="@+id/lyLogPanel"
         android:layout_width="match_parent"
-        android:layout_height="200dp"
+        android:layout_height="280dp"
         android:layout_gravity="bottom"
         android:background="#CC000000"
         android:orientation="vertical"
@@ -258,6 +258,18 @@
         android:layout_width="48dp"
         android:layout_height="48dp"
         android:layout_gravity="center"
+        android:visibility="gone" />
+
+    <!-- Reconnect button (visible when connection fails) -->
+    <com.aicontrol.android.widget.KButton
+        android:id="@+id/btnConnect"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="56dp"
+        android:paddingHorizontal="24pt"
+        android:text="重新连接"
+        android:textSize="14pt"
         android:visibility="gone" />
 
     <!-- Status text -->

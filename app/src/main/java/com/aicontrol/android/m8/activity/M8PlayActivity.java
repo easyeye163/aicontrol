@@ -1,12 +1,18 @@
 package com.aicontrol.android.m8.activity;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.media.MediaCodec;
 import android.media.MediaFormat;
+import android.net.DhcpInfo;
+import android.net.NetworkInfo;
+import android.net.Uri;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -35,13 +41,16 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.NetworkInterface;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Enumeration;
 import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -53,7 +62,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  * Video pipeline:
  * 1. TCP:4646 connect (verify reachability)
  * 2. UDP:1563 handshake {0xD8, 0xC0, 0xD9}
- * 3. Receive H264 RTP → parse/depacketize → MediaCodec decode → SurfaceView
+ * 3. Receive H264 RTP -> parse/depacketize -> MediaCodec decode -> SurfaceView
  */
 public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
 
@@ -78,8 +87,9 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     private TextView tvLogContent;
     private TextView tvLogCount;
     private TextView tvStatus;
+    private View btnConnect;
     private Handler handler = new Handler(Looper.getMainLooper());
-    private SimpleDateFormat logTimeFmt = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
+    private SimpleDateFormat logTimeFmt = new SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault());
 
     private volatile boolean streaming = false;
     private volatile boolean dataReceived = false;
@@ -97,6 +107,7 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
 
     private int frameCount = 0;
     private int totalPackets = 0;
+    private int totalBytes = 0;
     private long lastFpsTime = System.currentTimeMillis();
     private AtomicInteger logCount = new AtomicInteger(0);
     private StringBuilder logBuilder = new StringBuilder();
@@ -104,6 +115,7 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     private int fuSeq = -1;
     private ByteBuffer fuBuffer = null;
     private boolean fuStarted = false;
+    private int consecutiveTimeouts = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -113,6 +125,30 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         hideSystemUI();
         config = M8Config.loadConfig(this);
         initViews();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Log WiFi info on every resume
+        logNetworkDiagnostics();
+        // Auto-start streaming
+        if (!streaming) {
+            startStreaming();
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        stopStreaming();
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        stopStreaming();
+        releaseDecoder();
     }
 
     private void hideSystemUI() {
@@ -137,6 +173,7 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         tvLogContent = findViewById(R.id.tvLogContent);
         tvLogCount = findViewById(R.id.tvLogCount);
         tvStatus = findViewById(R.id.tvStatus);
+        btnConnect = findViewById(R.id.btnConnect);
 
         surfaceHolder = surfaceView.getHolder();
         surfaceHolder.setFormat(PixelFormat.TRANSLUCENT);
@@ -149,7 +186,6 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
             }
             @Override public void surfaceDestroyed(SurfaceHolder holder) {
                 appendLog("I", "Surface destroyed");
-                releaseDecoder();
             }
         });
 
@@ -184,6 +220,14 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         com.aicontrol.android.widget.KButton btnGoConfig = findViewById(R.id.btnGoConfig);
         btnGoConfig.setOnClickListener(v -> startActivity(new Intent(this, M8ConfigActivity.class)));
 
+        // Connect/reconnect button
+        if (btnConnect != null) {
+            btnConnect.setOnClickListener(v -> {
+                stopStreaming();
+                handler.postDelayed(() -> startStreaming(), 500);
+            });
+        }
+
         ImageButton btnSnap = findViewById(R.id.btnSnap);
         btnSnap.setOnClickListener(v -> takeSnapshot());
         ImageButton btnSpeed = findViewById(R.id.btnSpeed);
@@ -197,21 +241,131 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     }
 
     // =========================================================================
+    // Network Diagnostics
+    // =========================================================================
+
+    private void logNetworkDiagnostics() {
+        appendLog("I", "===== 网络诊断开始 =====");
+        long startMs = System.currentTimeMillis();
+
+        // 1. WiFi SSID
+        try {
+            WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            WifiInfo wifiInfo = wifiManager.getConnectionInfo();
+            String ssid = wifiInfo.getSSID();
+            int rssi = wifiInfo.getRssi();
+            int linkSpeed = wifiInfo.getLinkSpeed();
+            String macAddr = wifiInfo.getMacAddress();
+            int networkId = wifiInfo.getNetworkId();
+            int ipInt = wifiInfo.getIpAddress();
+            String localIp = intToIp(ipInt);
+            appendLog("I", "[WiFi] SSID=" + ssid + " RSSI=" + rssi + "dBm LinkSpeed=" + linkSpeed + "Mbps");
+            appendLog("I", "[WiFi] 本机IP=" + localIp + " NetworkID=" + networkId + " MAC=" + macAddr);
+        } catch (Exception e) {
+            appendLog("W", "[WiFi] 获取WiFi信息失败: " + e.getMessage());
+        }
+
+        // 2. DHCP Gateway
+        try {
+            WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            DhcpInfo dhcpInfo = wifiManager.getDhcpInfo();
+            String gateway = intToIp(dhcpInfo.gateway);
+            String netmask = intToIp(dhcpInfo.netmask);
+            String dns1 = intToIp(dhcpInfo.dns1);
+            String server = intToIp(dhcpInfo.serverAddress);
+            appendLog("I", "[DHCP] Gateway=" + gateway + " Netmask=" + netmask + " DNS=" + dns1 + " Server=" + server);
+
+            // Check if gateway matches drone IP
+            if (gateway.startsWith("192.168.100.")) {
+                appendLog("I", "[DHCP] 网关在192.168.100.x网段, 可能已连接无人机WiFi");
+            } else {
+                appendLog("W", "[DHCP] 网关=" + gateway + " 不在无人机网段(192.168.100.x)");
+            }
+        } catch (Exception e) {
+            appendLog("W", "[DHCP] 获取DHCP信息失败: " + e.getMessage());
+        }
+
+        // 3. All network interfaces
+        try {
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                NetworkInterface ni = interfaces.nextElement();
+                if (ni.isUp() && !ni.isLoopback()) {
+                    appendLog("I", "[NetIF] " + ni.getName() + " MTU=" + ni.getMTU());
+                    Enumeration<InetAddress> addrs = ni.getInetAddresses();
+                    while (addrs.hasMoreElements()) {
+                        InetAddress addr = addrs.nextElement();
+                        if (addr instanceof Inet4Address) {
+                            appendLog("I", "[NetIF]   IPv4: " + addr.getHostAddress());
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            appendLog("W", "[NetIF] 获取网络接口失败: " + e.getMessage());
+        }
+
+        // 4. Check connectivity to drone IP
+        appendLog("I", "[PING] 检查连通性 " + config.ip + " ...");
+        try {
+            long t1 = System.currentTimeMillis();
+            boolean reachable = InetAddress.getByName(config.ip).isReachable(3000);
+            long t2 = System.currentTimeMillis();
+            appendLog("I", "[PING] " + config.ip + " reachable=" + reachable + " 耗时=" + (t2 - t1) + "ms");
+        } catch (Exception e) {
+            appendLog("W", "[PING] 连通性检查失败: " + e.getMessage());
+        }
+
+        // 5. Check if drone IP is in the same subnet
+        try {
+            WifiManager wifiManager = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            DhcpInfo dhcpInfo = wifiManager.getDhcpInfo();
+            int gw = dhcpInfo.gateway;
+            int localInt = dhcpInfo.ipAddress;
+            String gwStr = intToIp(gw);
+            String localStr = intToIp(localInt);
+            appendLog("I", "[SUBNET] 本机=" + localStr + " 网关=" + gwStr + " 目标=" + config.ip);
+
+            // Simple subnet check: compare first 3 octets
+            String[] gwParts = gwStr.split("\\.");
+            String[] targetParts = config.ip.split("\\.");
+            boolean sameSubnet = gwParts.length >= 3 && targetParts.length >= 3
+                    && gwParts[0].equals(targetParts[0])
+                    && gwParts[1].equals(targetParts[1])
+                    && gwParts[2].equals(targetParts[2]);
+            appendLog("I", "[SUBNET] 同一子网: " + sameSubnet + " (网关前3段=" + gwParts[0] + "." + gwParts[1] + "." + gwParts[2] + ")");
+        } catch (Exception e) {
+            appendLog("W", "[SUBNET] 子网检查失败: " + e.getMessage());
+        }
+
+        long elapsed = System.currentTimeMillis() - startMs;
+        appendLog("I", "===== 网络诊断完成 (" + elapsed + "ms) =====");
+    }
+
+    private static String intToIp(int addr) {
+        return ((addr & 0xFF) + "." +
+                ((addr >> 8) & 0xFF) + "." +
+                ((addr >> 16) & 0xFF) + "." +
+                ((addr >> 24) & 0xFF));
+    }
+
+    // =========================================================================
     // Debug Log
     // =========================================================================
 
     private void appendLog(String level, String msg) {
         String time = logTimeFmt.format(new Date());
         String line = "[" + time + "] " + level + " " + msg + "\n";
-        Log.d(TAG, msg);
+        Log.d(TAG, line);
         handler.post(() -> {
+            if (tvLogContent == null) return;
             logBuilder.append(line);
-            // Keep max 500 lines
+            // Keep max 800 lines
             String text = logBuilder.toString();
             int lineCount = 0;
             for (int i = 0; i < text.length(); i++) {
                 if (text.charAt(i) == '\n') lineCount++;
-                if (lineCount > 500) {
+                if (lineCount > 800) {
                     text = text.substring(text.indexOf('\n', i) + 1);
                     logBuilder.setLength(0);
                     logBuilder.append(text);
@@ -234,59 +388,103 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
 
         streaming = true;
         dataReceived = false;
+        consecutiveTimeouts = 0;
         nalQueue.clear();
         fuStarted = false;
         fuBuffer = null;
         fuSeq = -1;
-        decoderConfigured = false;
         spsData = null;
         ppsData = null;
         frameCount = 0;
         totalPackets = 0;
+        totalBytes = 0;
 
         progressBar.setVisibility(View.VISIBLE);
         lyNotConnected.setVisibility(View.GONE);
         tvStatus.setVisibility(View.VISIBLE);
         tvStatus.setText("正在连接...");
 
-        appendLog("I", "========== 开始连接 ==========");
-        appendLog("I", "配置: IP=" + config.ip + " 视频端口=" + config.udpPort + " 控制端口=" + config.tcpPort + " FTP端口=" + config.ftpPort);
+        if (btnConnect != null) btnConnect.setVisibility(View.GONE);
+
+        appendLog("I", "========== 开始连接 (v0.0.89-diag) ==========");
+        appendLog("I", "配置: IP=" + config.ip + " UDP=" + config.udpPort + " TCP=" + config.tcpPort + " FTP=" + config.ftpPort);
 
         streamThread = new Thread(() -> {
             try {
+                // Run network diagnostics on worker thread (more accurate)
+                logNetworkDiagnosticsWorker();
+
                 // 1. TCP connect to verify reachability
-                appendLog("I", "正在TCP连接 " + config.ip + ":" + config.tcpPort + " ...");
+                appendLog("I", "[STEP1] TCP连接 " + config.ip + ":" + config.tcpPort + " ...");
+                long tcpStart = System.currentTimeMillis();
                 connectTcp();
+                long tcpElapsed = System.currentTimeMillis() - tcpStart;
+                appendLog("I", "[STEP1] TCP结果: " + (tcpSocket != null ? "成功(" + tcpElapsed + "ms)" : "失败(" + tcpElapsed + "ms)"));
 
-                // If TCP failed, we might still be OK (drone might not have TCP server running)
-                // The real test is whether we receive UDP data
-                appendLog("I", "正在UDP连接 " + config.ip + ":" + config.udpPort + " ...");
-
-                // 2. Connect UDP
-                udpSocket = new DatagramSocket();
-                udpSocket.setSoTimeout(5000); // 5s timeout for first packet, then 10s
-                udpSocket.connect(new InetSocketAddress(config.ip, config.udpPort));
+                // 2. Create UDP socket
+                appendLog("I", "[STEP2] 创建UDP socket...");
+                long udpStart = System.currentTimeMillis();
+                udpSocket = new DatagramSocket(null);
+                udpSocket.setReuseAddress(true);
+                udpSocket.bind(new InetSocketAddress(0)); // bind to any available port
+                int localPort = udpSocket.getLocalPort();
+                udpSocket.setSoTimeout(3000);
                 udpSocket.setReceiveBufferSize(MAX_UDP_PACKET_SIZE * 10);
+                udpSocket.setSendBufferSize(65536);
+                long udpElapsed = System.currentTimeMillis() - udpStart;
+                appendLog("I", "[STEP2] UDP socket已创建: 本地端口=" + localPort + " sendBuf=" + udpSocket.getSendBufferSize() + " recvBuf=" + udpSocket.getReceiveBufferSize() + " (" + udpElapsed + "ms)");
 
-                appendLog("I", "UDP socket已绑定");
+                // 3. Send handshake (try multiple times with different approaches)
+                appendLog("I", "[STEP3] 发送握手包...");
 
-                // 3. Send handshake
-                byte[] handshake = new byte[]{(byte) 0xD8, (byte) 0xC0, (byte) 0xD9};
-                DatagramPacket handshakePkt = new DatagramPacket(handshake, handshake.length);
-                udpSocket.send(handshakePkt);
-                appendLog("I", "握手包已发送: {0xD8, 0xC0, 0xD9} → " + config.ip + ":" + config.udpPort);
+                // Approach 1: Original 3-byte handshake
+                byte[] handshake1 = new byte[]{(byte) 0xD8, (byte) 0xC0, (byte) 0xD9};
+                sendHandshake(handshake1, "方案A: 3字节 {D8 C0 D9}");
+
+                // Approach 2: Try with connection (connect socket)
+                try {
+                    udpSocket.connect(new InetSocketAddress(config.ip, config.udpPort));
+                    sendHandshake(handshake1, "方案B: connect后发送");
+                    udpSocket.disconnect();
+                } catch (Exception e) {
+                    appendLog("W", "方案B失败: " + e.getMessage());
+                }
+
+                // Approach 3: 4-byte handshake (maybe needs length prefix?)
+                byte[] handshake3 = new byte[]{0x00, (byte) 0xD8, (byte) 0xC0, (byte) 0xD9};
+                sendHandshake(handshake3, "方案C: 4字节 {00 D8 C0 D9}");
+
+                // Approach 4: Empty UDP packet to port
+                try {
+                    DatagramPacket emptyPkt = new DatagramPacket(new byte[0], 0, InetAddress.getByName(config.ip), config.udpPort);
+                    udpSocket.send(emptyPkt);
+                    appendLog("I", "方案D: 空包已发送");
+                } catch (Exception e) {
+                    appendLog("W", "方案D失败: " + e.getMessage());
+                }
+
+                // Approach 5: Re-connect and resend original handshake
+                try {
+                    udpSocket.connect(new InetSocketAddress(config.ip, config.udpPort));
+                    sendHandshake(handshake1, "方案E: reconnect后再发 {D8 C0 D9}");
+                } catch (Exception e) {
+                    appendLog("W", "方案E失败: " + e.getMessage());
+                }
 
                 handler.post(() -> {
-                    tvStatus.setText("握手已发送 | 等待数据...");
+                    tvStatus.setText("握手已发送(5种方案) | 等待数据...");
                 });
 
                 // 4. Start decoder thread
                 Thread decodeThread = new Thread(this::decoderLoop, "DecodeThread");
                 decodeThread.start();
 
-                // 5. Receive loop - wait for first packet to confirm connection
+                // 5. Receive loop
+                appendLog("I", "[STEP4] 进入接收循环, timeout=3000ms...");
                 byte[] buffer = new byte[MAX_UDP_PACKET_SIZE];
-                udpSocket.setSoTimeout(5000); // First packet timeout 5s
+
+                int handshakeRetryCount = 0;
+                long lastHandshakeRetry = System.currentTimeMillis();
 
                 while (streaming) {
                     try {
@@ -294,73 +492,198 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                         udpSocket.receive(packet);
                         int length = packet.getLength();
                         totalPackets++;
+                        totalBytes += length;
+                        consecutiveTimeouts = 0;
 
                         if (!dataReceived) {
                             dataReceived = true;
-                            udpSocket.setSoTimeout(10000); // Longer timeout after first packet
+                            long elapsed = System.currentTimeMillis() - lastHandshakeRetry;
                             handler.post(() -> {
                                 progressBar.setVisibility(View.GONE);
                             });
-                            appendLog("I", ">>> 收到第一个数据包! len=" + length + " 来自 " + packet.getAddress());
+                            appendLog("I", ">>> 首包到达! len=" + length + " 来自=" + packet.getAddress().getHostAddress() + ":" + packet.getPort());
+                            appendLog("I", ">>> 距上次握手: " + elapsed + "ms, 总握手尝试=" + handshakeRetryCount);
                         }
 
-                        if (length > 0 && streaming) {
-                            // Log first 5 packets in detail
-                            if (totalPackets <= 5) {
-                                String hex = bytesToHex(buffer, Math.min(length, 20));
-                                appendLog("D", "UDP pkt #" + totalPackets + " len=" + length + " data=" + hex);
-                            }
+                        // Log EVERY packet for the first 20
+                        if (totalPackets <= 20) {
+                            String hex = bytesToHexFull(buffer, Math.min(length, 64));
+                            appendLog("D", "UDP#" + totalPackets + " len=" + length + " from=" + packet.getAddress().getHostAddress() + ":" + packet.getPort()
+                                    + " [" + hex + "]");
+                        }
 
-                            // Check if it looks like RTP
+                        // Check if it looks like RTP
+                        if (length >= RTP_HEADER_MIN_SIZE) {
                             int version = (buffer[0] >> 6) & 0x03;
-                            if (version == 2 && length >= RTP_HEADER_MIN_SIZE) {
-                                parseRtpPacket(buffer, length);
-                            } else {
-                                // Not RTP - log it
-                                if (totalPackets <= 20) {
-                                    appendLog("W", "非RTP数据包 #" + totalPackets + " len=" + length + " firstByte=0x" + String.format("%02X", buffer[0] & 0xFF));
-                                }
+                            int payloadType = buffer[1] & 0x7F;
+                            int seqNum = ((buffer[2] & 0xFF) << 8) | (buffer[3] & 0xFF);
+                            int timestamp = ((buffer[4] & 0xFF) << 24) | ((buffer[5] & 0xFF) << 16) | ((buffer[6] & 0xFF) << 8) | (buffer[7] & 0xFF);
+                            int ssrc = ((buffer[8] & 0xFF) << 24) | ((buffer[9] & 0xFF) << 16) | ((buffer[10] & 0xFF) << 8) | (buffer[11] & 0xFF);
+
+                            if (totalPackets <= 5) {
+                                appendLog("D", String.format("RTP: V=%d PT=%d Seq=%d TS=%d SSRC=0x%08X", version, payloadType, seqNum, timestamp, ssrc));
                             }
+
+                            if (version == 2) {
+                                parseRtpPacket(buffer, length);
+                            } else if (totalPackets <= 20) {
+                                appendLog("W", "非RTP包! V=" + version + " firstByte=0x" + String.format("%02X", buffer[0] & 0xFF));
+                            }
+                        } else if (length > 0 && totalPackets <= 20) {
+                            appendLog("D", "短包(len=" + length + "): " + bytesToHexFull(buffer, length));
                         }
 
-                        // Log packet count every 100 packets
+                        // Periodic stats
                         if (totalPackets % 100 == 0) {
-                            appendLog("D", "已接收 " + totalPackets + " 个UDP包, queue=" + nalQueue.size());
+                            long now = System.currentTimeMillis();
+                            double rate = totalBytes * 1000.0 / Math.max(1, now - lastFpsTime);
+                            appendLog("I", "[STATS] pkts=" + totalPackets + " bytes=" + totalBytes + " queue=" + nalQueue.size() + " rate=" + String.format("%.0f", rate) + " B/s");
+                        }
+
+                        // Re-send handshake every 3 seconds if no data received yet
+                        if (!dataReceived && System.currentTimeMillis() - lastHandshakeRetry > 3000 && handshakeRetryCount < 10) {
+                            handshakeRetryCount++;
+                            lastHandshakeRetry = System.currentTimeMillis();
+                            appendLog("I", "[RETRY#" + handshakeRetryCount + "] 重发握手包...");
+                            sendHandshake(handshake1, "重试#" + handshakeRetryCount);
                         }
 
                     } catch (SocketTimeoutException e) {
+                        consecutiveTimeouts++;
                         if (!dataReceived && streaming) {
-                            appendLog("E", "等待数据超时! 未收到任何数据包 (可能未连接无人机WiFi热点)");
-                            appendLog("W", "请确认: 1)手机已连接H8/M8 WiFi 2)IP=" + config.ip + " 3)端口=" + config.udpPort);
-                            handler.post(() -> {
-                                progressBar.setVisibility(View.GONE);
-                                lyNotConnected.setVisibility(View.VISIBLE);
-                                tvStatus.setText("未收到数据 - 请检查WiFi连接");
-                            });
-                            stopStreaming();
-                            return;
+                            if (consecutiveTimeouts >= 2 && handshakeRetryCount == 0) {
+                                // After 2 timeouts without any retry yet
+                                appendLog("W", "超时#" + consecutiveTimeouts + " 未收到数据, 重发握手...");
+                                handshakeRetryCount++;
+                                lastHandshakeRetry = System.currentTimeMillis();
+                                sendHandshake(handshake1, "超时重发#" + handshakeRetryCount);
+                            }
+                            if (consecutiveTimeouts >= 5) {
+                                appendLog("E", "等待数据超时! 连续" + consecutiveTimeouts + "次超时");
+                                appendLog("E", "诊断: 请确认 1)手机已连接H8/M8 WiFi热点 2)无人机已开机 3)IP=" + config.ip + " 4)端口=" + config.udpPort);
+                                handler.post(() -> {
+                                    progressBar.setVisibility(View.GONE);
+                                    lyNotConnected.setVisibility(View.VISIBLE);
+                                    tvStatus.setText("超时 - 未收到数据");
+                                    if (btnConnect != null) btnConnect.setVisibility(View.VISIBLE);
+                                });
+                                stopStreaming();
+                                return;
+                            }
+                            appendLog("D", "超时#" + consecutiveTimeouts + " 继续等待...");
                         } else if (streaming) {
-                            appendLog("W", "UDP接收超时 (streaming, 无数据中...)");
+                            appendLog("D", "接收超时 (已收到数据, stream可能中断)");
                         }
                     }
                 }
             } catch (Exception e) {
                 Log.e(TAG, "Stream error", e);
                 appendLog("E", "连接异常: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                Log.e(TAG, "Stack:", e);
+                // Log full stack trace
+                for (StackTraceElement ste : e.getStackTrace()) {
+                    appendLog("E", "  at " + ste.toString());
+                }
                 handler.post(() -> {
                     if (streaming) {
                         progressBar.setVisibility(View.GONE);
                         lyNotConnected.setVisibility(View.VISIBLE);
                         tvStatus.setText("连接失败: " + e.getMessage());
+                        if (btnConnect != null) btnConnect.setVisibility(View.VISIBLE);
                     }
                 });
             } finally {
                 closeUdp();
                 streaming = false;
-                appendLog("I", "========== 连接结束 ==========");
+                appendLog("I", "========== 连接结束 (总包=" + totalPackets + " 总字节=" + totalBytes + ") ==========");
             }
         }, "StreamThread");
         streamThread.start();
+    }
+
+    private void logNetworkDiagnosticsWorker() {
+        // Worker thread network checks
+        appendLog("I", "[WORKER] 线程网络诊断...");
+        try {
+            // Check TCP port reachability
+            Socket testSocket = null;
+            try {
+                testSocket = new Socket();
+                testSocket.connect(new InetSocketAddress(config.ip, config.tcpPort), 2000);
+                appendLog("I", "[WORKER] TCP:" + config.tcpPort + " 可达!");
+                testSocket.close();
+            } catch (Exception e) {
+                appendLog("W", "[WORKER] TCP:" + config.tcpPort + " 不可达: " + e.getMessage());
+                if (testSocket != null) try { testSocket.close(); } catch (Exception ignored) {}
+            }
+
+            // Check UDP port with a probe
+            DatagramSocket probeSocket = null;
+            try {
+                probeSocket = new DatagramSocket();
+                probeSocket.setSoTimeout(2000);
+                byte[] probe = new byte[]{(byte) 0xD8, (byte) 0xC0, (byte) 0xD9};
+                DatagramPacket probePkt = new DatagramPacket(probe, probe.length, InetAddress.getByName(config.ip), config.udpPort);
+                long t1 = System.currentTimeMillis();
+                probeSocket.send(probePkt);
+                appendLog("I", "[WORKER] UDP探测包已发送到 " + config.ip + ":" + config.udpPort + " (" + (System.currentTimeMillis() - t1) + "ms)");
+                // Try to receive response
+                byte[] recvBuf = new byte[1024];
+                DatagramPacket recvPkt = new DatagramPacket(recvBuf, recvBuf.length);
+                try {
+                    probeSocket.receive(recvPkt);
+                    appendLog("I", "[WORKER] UDP收到响应! len=" + recvPkt.getLength() + " from=" + recvPkt.getAddress() + ":" + recvPkt.getPort());
+                    appendLog("I", "[WORKER] 响应数据: " + bytesToHexFull(recvBuf, Math.min(recvPkt.getLength(), 32)));
+                } catch (SocketTimeoutException te) {
+                    appendLog("W", "[WORKER] UDP 2秒内无响应 (不一定有问题, 可能需要特定握手序列)");
+                }
+            } catch (Exception e) {
+                appendLog("W", "[WORKER] UDP探测失败: " + e.getMessage());
+            } finally {
+                if (probeSocket != null) try { probeSocket.close(); } catch (Exception ignored) {}
+            }
+
+            // Check other common drone ports
+            int[] portsToCheck = {8554, 8080, 554, 5000, 5001, 80, 443, 8866, 9100};
+            for (int port : portsToCheck) {
+                try {
+                    Socket s = new Socket();
+                    s.connect(new InetSocketAddress(config.ip, port), 500);
+                    appendLog("I", "[PORT] " + config.ip + ":" + port + " 开放!");
+                    s.close();
+                } catch (Exception ignored) {}
+            }
+
+        } catch (Exception e) {
+            appendLog("W", "[WORKER] 诊断异常: " + e.getMessage());
+        }
+    }
+
+    private void sendHandshake(byte[] data, String label) {
+        try {
+            DatagramPacket pkt;
+            if (udpSocket.isConnected()) {
+                pkt = new DatagramPacket(data, data.length);
+            } else {
+                pkt = new DatagramPacket(data, data.length, InetAddress.getByName(config.ip), config.udpPort);
+            }
+            long t1 = System.nanoTime();
+            udpSocket.send(pkt);
+            long elapsed = (System.nanoTime() - t1) / 1_000_000;
+            String hex = bytesToHexFull(data, data.length);
+            appendLog("I", "[" + label + "] 已发送 " + data.length + "字节 {" + hex + "} -> " + config.ip + ":" + config.udpPort + " (" + elapsed + "ms)");
+        } catch (Exception e) {
+            appendLog("E", "[" + label + "] 发送失败: " + e.getMessage());
+        }
+    }
+
+    private static String bytesToHexFull(byte[] data, int len) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < len; i++) {
+            sb.append(String.format("%02X", data[i] & 0xFF));
+            if (i < len - 1) sb.append(" ");
+        }
+        return sb.toString();
     }
 
     private static String bytesToHex(byte[] data, int len) {
@@ -382,39 +705,71 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
             tcpSocket.connect(new InetSocketAddress(config.ip, config.tcpPort), 3000);
             tcpSocket.setSoTimeout(5000);
             tcpSocket.setKeepAlive(true);
-            appendLog("I", "TCP已连接: " + config.ip + ":" + config.tcpPort);
+            tcpSocket.setTcpNoDelay(true);
+            appendLog("I", "[TCP] 已连接: " + config.ip + ":" + config.tcpPort);
+            appendLog("I", "[TCP] local=" + tcpSocket.getLocalAddress().getHostAddress() + ":" + tcpSocket.getLocalPort()
+                    + " remote=" + tcpSocket.getRemoteSocketAddress()
+                    + " keepAlive=" + tcpSocket.getKeepAlive()
+                    + " tcpNoDelay=" + tcpSocket.getTcpNoDelay());
 
-            // Read initial response
+            // Read initial response with timeout
             BufferedReader reader = new BufferedReader(
                     new InputStreamReader(tcpSocket.getInputStream()));
-            String firstLine = reader.readLine();
-            if (firstLine != null) {
-                appendLog("I", "TCP响应: " + firstLine);
-                try {
-                    JSONObject resp = new JSONObject(firstLine);
-                    String fw = resp.optString("FirmWare", "");
-                    String platform = resp.optString("platform", "");
-                    int result = resp.optInt("RESULT", -1);
-                    appendLog("I", "固件=" + fw + " 平台=" + platform + " RESULT=" + result);
-                    handler.post(() -> tvStatus.setText("TCP已连接 | 固件 " + fw));
-                } catch (Exception ignored) {}
+            tcpSocket.setSoTimeout(3000);
+            try {
+                String firstLine = reader.readLine();
+                if (firstLine != null) {
+                    appendLog("I", "[TCP] 收到响应 (" + firstLine.length() + "字节): " + firstLine);
+                    try {
+                        JSONObject resp = new JSONObject(firstLine);
+                        String fw = resp.optString("FirmWare", "");
+                        String platform = resp.optString("platform", "");
+                        int result = resp.optInt("RESULT", -1);
+                        appendLog("I", "[TCP] 固件=" + fw + " 平台=" + platform + " RESULT=" + result);
+
+                        // Try sending a query command
+                        appendLog("I", "[TCP] 发送查询指令...");
+                        JSONObject query = new JSONObject();
+                        query.put("CMD", 0);
+                        query.put("PARAM", "");
+                        OutputStream os = tcpSocket.getOutputStream();
+                        os.write((query.toString() + "\n").getBytes("UTF-8"));
+                        os.flush();
+                        appendLog("I", "[TCP] 查询已发: " + query.toString());
+
+                        tcpSocket.setSoTimeout(2000);
+                        String queryResp = reader.readLine();
+                        if (queryResp != null) {
+                            appendLog("I", "[TCP] 查询响应: " + queryResp);
+                        }
+                    } catch (Exception je) {
+                        appendLog("W", "[TCP] JSON解析: " + je.getMessage());
+                    }
+                    handler.post(() -> tvStatus.setText("TCP已连接 | UDP握手中..."));
+                } else {
+                    appendLog("W", "[TCP] 响应为空");
+                }
+            } catch (SocketTimeoutException ste) {
+                appendLog("W", "[TCP] 读取响应超时(3s), 可能无初始数据");
             }
 
+            // Start TCP reader thread
+            tcpSocket.setSoTimeout(0); // Infinite for reader thread
             tcpThread = new Thread(() -> {
                 try {
                     while (streaming) {
                         String line = reader.readLine();
                         if (line == null) break;
-                        appendLog("D", "TCP: " + line);
+                        appendLog("D", "[TCP-RECV] " + line);
                     }
                 } catch (Exception e) {
-                    if (streaming) appendLog("W", "TCP读取中断: " + e.getMessage());
+                    if (streaming) appendLog("W", "[TCP] 读取中断: " + e.getMessage());
                 }
             }, "TCPThread");
             tcpThread.start();
         } catch (Exception e) {
-            appendLog("W", "TCP连接失败(非致命): " + e.getMessage());
-            appendLog("W", "TCP失败不代表连接不可用，继续尝试UDP视频流...");
+            appendLog("W", "[TCP] 连接失败(非致命): " + e.getClass().getSimpleName() + " " + e.getMessage());
+            appendLog("W", "[TCP] 继续尝试UDP视频流...");
             tcpSocket = null;
         }
     }
@@ -425,10 +780,7 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
 
     private void parseRtpPacket(byte[] data, int length) {
         int version = (data[0] >> 6) & 0x03;
-        if (version != 2) {
-            appendLog("W", "无效RTP版本: " + version);
-            return;
-        }
+        if (version != 2) return;
 
         int padding = (data[0] >> 5) & 0x01;
         int extension = (data[0] >> 4) & 0x01;
@@ -451,11 +803,9 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         }
         if (payloadLength <= 0) return;
 
-        // Log first RTP packet
-        if (totalPackets <= 3) {
-            String hex = bytesToHex(data, Math.min(length, 24));
-            appendLog("D", String.format("RTP #%d: PT=%d Seq=%d M=%d Payload=%d hex=[%s]",
-                    totalPackets, payloadType, seqNum, marker, payloadLength, hex));
+        if (totalPackets <= 5) {
+            appendLog("D", String.format("RTP parse: PT=%d Seq=%d M=%d Payload=%d Offset=%d",
+                    payloadType, seqNum, marker, payloadLength, payloadOffset));
         }
 
         int nalHeaderByte = data[payloadOffset] & 0xFF;
@@ -472,12 +822,13 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
             parseFuA(data, payloadOffset, payloadLength, seqNum, marker);
         } else {
             if (totalPackets <= 10) {
-                appendLog("D", "未知NAL类型: " + nalType + " len=" + payloadLength);
+                appendLog("D", "NAL类型=" + nalType + " (STAP-A=" + RTP_NAL_STAP_A + " FU-A=" + RTP_NAL_FU_A + ") len=" + payloadLength);
             }
         }
     }
 
     private void parseStapA(byte[] data, int offset, int length, int marker) {
+        appendLog("D", "STAP-A聚合包 len=" + length);
         int pos = offset + 1;
         while (pos + 2 < offset + length) {
             int nalSize = ((data[pos] & 0xFF) << 8) | (data[pos + 1] & 0xFF);
@@ -486,6 +837,8 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
             byte[] nalUnit = new byte[nalSize + 4];
             nalUnit[0] = 0x00; nalUnit[1] = 0x00; nalUnit[2] = 0x00; nalUnit[3] = 0x01;
             System.arraycopy(data, pos, nalUnit, 4, nalSize);
+            int nalType = (nalUnit[4] & 0xFF) & 0x1F;
+            appendLog("D", "STAP-A NAL: type=" + nalType + " size=" + nalSize);
             handleNalUnit(nalUnit, (pos + nalSize >= offset + length) ? marker : 0);
             pos += nalSize;
         }
@@ -511,9 +864,8 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
             fuBuffer.put(new byte[]{0x00, 0x00, 0x00, 0x01});
             fuBuffer.put(originalNalHeader);
             fuBuffer.put(data, fuPayloadOffset, fuPayloadLength);
-
-            if (totalPackets <= 10) {
-                appendLog("D", "FU-A START: nalType=" + nalType + " payload=" + fuPayloadLength);
+            if (totalPackets <= 15) {
+                appendLog("D", "FU-A START: type=" + nalType + " refIdc=" + nalRefIdc + " seq=" + seqNum + " payload=" + fuPayloadLength);
             }
         } else if (fuStarted) {
             if (fuBuffer != null && fuBuffer.remaining() >= fuPayloadLength) {
@@ -533,12 +885,17 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                     fuBuffer.flip();
                     fuBuffer.get(nalUnit);
                     fuBuffer = null;
-
-                    if (totalPackets <= 10) {
-                        appendLog("D", "FU-A END: NAL size=" + nalUnit.length);
+                    if (totalPackets <= 15) {
+                        int nalT = (nalUnit[4] & 0xFF) & 0x1F;
+                        appendLog("D", "FU-A END: type=" + nalT + " totalSize=" + nalUnit.length + " (from seq " + fuSeq + " to " + seqNum + ")");
                     }
                     handleNalUnit(nalUnit, marker);
                 }
+            }
+        } else {
+            // FU-A fragment without START - maybe missed start
+            if (totalPackets <= 10) {
+                appendLog("W", "FU-A碎片但无START! type=" + nalType + " seq=" + seqNum);
             }
         }
     }
@@ -555,7 +912,9 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         if (nalType == NAL_TYPE_SPS) {
             spsData = new byte[nalUnit.length - 4];
             System.arraycopy(nalUnit, 4, spsData, 0, spsData.length);
-            appendLog("I", "SPS收到, size=" + spsData.length + " hex=" + bytesToHex(spsData, Math.min(spsData.length, 16)));
+            appendLog("I", ">>> SPS! size=" + spsData.length + " hex=[" + bytesToHexFull(spsData, Math.min(spsData.length, 32)) + "]");
+            // Try to parse SPS for resolution
+            tryParseSpsResolution(spsData);
             tryConfigureDecoder();
             return;
         }
@@ -563,16 +922,38 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         if (nalType == NAL_TYPE_PPS) {
             ppsData = new byte[nalUnit.length - 4];
             System.arraycopy(nalUnit, 4, ppsData, 0, ppsData.length);
-            appendLog("I", "PPS收到, size=" + ppsData.length + " hex=" + bytesToHex(ppsData, Math.min(ppsData.length, 16)));
+            appendLog("I", ">>> PPS! size=" + ppsData.length + " hex=[" + bytesToHexFull(ppsData, Math.min(ppsData.length, 16)) + "]");
             tryConfigureDecoder();
             return;
         }
 
-        if (nalType == NAL_TYPE_SEI) return;
+        if (nalType == NAL_TYPE_SEI) {
+            if (totalPackets <= 5) appendLog("D", "SEI NAL size=" + nalUnit.length);
+            return;
+        }
 
         if (decoderConfigured) {
             if (nalQueue.remainingCapacity() == 0) nalQueue.poll();
             nalQueue.offer(nalUnit);
+        } else if (totalPackets <= 20) {
+            appendLog("D", "NAL type=" + nalType + " size=" + nalUnit.length + " (解码器未就绪,丢弃)");
+        }
+    }
+
+    private void tryParseSpsResolution(byte[] sps) {
+        // Simple SPS parsing to get width/height
+        try {
+            if (sps.length < 8) return;
+            int idx = 0;
+            // Skip forbidden_zero_bit(1), nal_ref_idc(2), nal_unit_type(5) = byte[0]
+            // Then profile_idc=byte[1], constraint_set_flags=byte[2], level_idc=byte[3]
+            // Then exp-golomb coded seq_parameter_set_id
+            // For simplicity, just log the profile and level
+            int profile = sps[1] & 0xFF;
+            int level = sps[3] & 0xFF;
+            appendLog("I", "[SPS] profile=" + profile + " level=" + level + " (66=Baseline, 77=Main, 100=High)");
+        } catch (Exception e) {
+            appendLog("W", "[SPS] 解析失败: " + e.getMessage());
         }
     }
 
@@ -581,22 +962,36 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         handler.post(() -> {
             if (decoderConfigured) return;
             try {
-                MediaFormat format = MediaFormat.createVideoFormat(
-                        MediaFormat.MIMETYPE_VIDEO_AVC, 1280, 720);
-                format.setByteBuffer("csd-0", ByteBuffer.wrap(spsData));
-                format.setByteBuffer("csd-1", ByteBuffer.wrap(ppsData));
-                format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, MAX_UDP_PACKET_SIZE);
+                // Try different resolutions
+                int[][] resolutions = {{1280, 720}, {960, 720}, {856, 480}, {640, 480}, {1920, 1080}};
 
-                decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
-                decoder.configure(format, surfaceHolder.getSurface(), null, 0);
-                decoder.start();
-                decoderConfigured = true;
+                for (int[] res : resolutions) {
+                    try {
+                        MediaFormat format = MediaFormat.createVideoFormat(
+                                MediaFormat.MIMETYPE_VIDEO_AVC, res[0], res[1]);
+                        format.setByteBuffer("csd-0", ByteBuffer.wrap(spsData));
+                        format.setByteBuffer("csd-1", ByteBuffer.wrap(ppsData));
+                        format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, MAX_UDP_PACKET_SIZE);
 
-                appendLog("I", ">>> MediaCodec H264解码器已启动! SPS=" + spsData.length + " PPS=" + ppsData.length);
-                tvStatus.setText("解码器已启动 | 等待视频帧...");
+                        decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
+                        decoder.configure(format, surfaceHolder.getSurface(), null, 0);
+                        decoder.start();
+                        decoderConfigured = true;
+
+                        appendLog("I", ">>> MediaCodec启动! " + res[0] + "x" + res[1] + " SPS=" + spsData.length + " PPS=" + ppsData.length);
+                        tvStatus.setText("解码器 " + res[0] + "x" + res[1] + " | 等待视频帧...");
+                        return;
+                    } catch (Exception e) {
+                        appendLog("W", "解码器配置 " + res[0] + "x" + res[1] + " 失败: " + e.getMessage());
+                        if (decoder != null) {
+                            try { decoder.release(); } catch (Exception ignored) {}
+                            decoder = null;
+                        }
+                    }
+                }
+                appendLog("E", "所有分辨率尝试均失败");
             } catch (Exception e) {
-                appendLog("E", "MediaCodec配置失败: " + e.getMessage());
-                decoderConfigured = false;
+                appendLog("E", "MediaCodec配置异常: " + e.getMessage());
             }
         });
     }
@@ -628,10 +1023,12 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                     if ((info.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
                         frameCount++;
                         long now = System.currentTimeMillis();
-                        if (now - lastFpsTime >= 1000) {
+                        if (now - lastFpsTime >= 2000) {
                             int fps = (int) (frameCount * 1000.0 / (now - lastFpsTime));
-                            final String status = config.ip + " | " + fps + " FPS | pkts=" + totalPackets;
+                            double bitrate = totalBytes * 1000.0 / Math.max(1, now - lastFpsTime);
+                            final String status = config.ip + " | " + fps + " FPS | " + String.format("%.0f", bitrate / 1024) + " KB/s | pkts=" + totalPackets;
                             handler.post(() -> tvStatus.setText(status));
+                            appendLog("I", "[DECODE] " + fps + " FPS " + String.format("%.0f", bitrate / 1024) + " KB/s frames=" + frameCount);
                             frameCount = 0;
                             lastFpsTime = now;
                         }
@@ -641,17 +1038,20 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                     MediaFormat newFormat = decoder.getOutputFormat();
                     int w = newFormat.getInteger(MediaFormat.KEY_WIDTH);
                     int h = newFormat.getInteger(MediaFormat.KEY_HEIGHT);
-                    appendLog("I", "输出格式变更: " + w + "x" + h + " " + newFormat);
-                    handler.post(() -> tvStatus.setText("解码中 | " + w + "x" + h));
+                    String mimeType = newFormat.getString(MediaFormat.KEY_MIME);
+                    appendLog("I", "[CODEC] 输出格式: " + w + "x" + h + " " + mimeType);
+                    handler.post(() -> tvStatus.setText("解码中 " + w + "x" + h));
+                } else if (outputBufIdx == MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) {
+                    appendLog("D", "[CODEC] output buffers changed");
                 }
             } catch (InterruptedException e) { break; }
             catch (Exception e) {
-                appendLog("E", "解码器错误: " + e.getMessage());
+                appendLog("E", "[DECODE] 错误: " + e.getMessage());
                 if (decoder != null) { try { decoder.stop(); } catch (Exception ignored) {} releaseDecoder(); }
                 try { Thread.sleep(100); } catch (InterruptedException ie) { break; }
             }
         }
-        appendLog("I", "解码线程退出");
+        appendLog("I", "[DECODE] 线程退出");
     }
 
     private void releaseDecoder() {
@@ -671,7 +1071,9 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         if (streamThread != null) { streamThread.interrupt(); streamThread = null; }
         if (tcpThread != null) { tcpThread.interrupt(); tcpThread = null; }
         closeTcp(); closeUdp();
-        handler.post(() -> { if (progressBar != null) progressBar.setVisibility(View.GONE); });
+        handler.post(() -> {
+            if (progressBar != null) progressBar.setVisibility(View.GONE);
+        });
     }
 
     private void closeTcp() {
@@ -714,34 +1116,37 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     // =========================================================================
 
     private void sendTcpCommand(String cmd) {
-        appendLog("I", "发送指令: " + cmd);
+        appendLog("I", "[CMD] 发送: " + cmd);
         new Thread(() -> {
             Socket socket = null;
             try {
                 socket = tcpSocket;
                 boolean reuse = (socket != null && socket.isConnected() && !socket.isClosed());
                 if (!reuse) {
+                    appendLog("D", "[CMD] TCP复用不可用, 新建连接...");
                     socket = new Socket();
                     socket.connect(new InetSocketAddress(config.ip, config.tcpPort), 3000);
                     socket.setSoTimeout(3000);
+                    appendLog("D", "[CMD] 新TCP已连接");
                 }
                 JSONObject jsonCmd = new JSONObject();
                 jsonCmd.put("CMD", getCommandCode(cmd));
                 jsonCmd.put("PARAM", "");
                 OutputStream os = socket.getOutputStream();
-                os.write(jsonCmd.toString().getBytes("UTF-8"));
-                os.write("\n".getBytes("UTF-8"));
+                String cmdStr = jsonCmd.toString() + "\n";
+                os.write(cmdStr.getBytes("UTF-8"));
                 os.flush();
-                appendLog("D", "指令已发: " + jsonCmd.toString());
+                appendLog("D", "[CMD] 已发: " + cmdStr.trim());
+
                 BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 String response = reader.readLine();
-                appendLog("D", "指令响应: " + response);
+                appendLog("D", "[CMD] 响应: " + response);
                 if (!reuse) socket.close();
-                handler.post(() -> Toast.makeText(this, getCommandLabel(cmd) + " 已发送", Toast.LENGTH_SHORT).show());
+                handler.post(() -> Toast.makeText(this, getCommandLabel(cmd) + " OK", Toast.LENGTH_SHORT).show());
             } catch (Exception e) {
-                appendLog("E", "指令失败: " + e.getMessage());
+                appendLog("E", "[CMD] 失败: " + e.getClass().getSimpleName() + ": " + e.getMessage());
                 if (socket != null && socket != tcpSocket) { try { socket.close(); } catch (Exception ignored) {} }
-                handler.post(() -> Toast.makeText(this, "指令发送失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                handler.post(() -> Toast.makeText(this, getCommandLabel(cmd) + " 失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
             }
         }).start();
     }
