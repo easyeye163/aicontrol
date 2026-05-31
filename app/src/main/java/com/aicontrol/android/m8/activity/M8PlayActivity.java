@@ -42,39 +42,43 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
-import java.net.Inet4Address;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.NetworkInterface;
 import java.net.PortUnreachableException;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.nio.ByteBuffer;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Enumeration;
 import java.util.Locale;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * M8/H8 Drone video stream - v0.0.92
- * Focus: TCP:7070 video probe after discovery
+ * M8/H8 Drone video stream - v0.0.94
+ * 
+ * Protocol flow based on H8 APK reverse engineering:
+ * 1. Connect WiFi → auto TCP:4646 (JSON control)
+ * 2. TCP:4646 send JSON query → get firmware/device info
+ * 3. TCP:4646 send video activation command
+ * 4. UDP:1563 send 3-byte handshake {0xD8, 0xC0, 0xD9}
+ * 5. Receive H264 RTP data → MediaCodec decode → SurfaceView render
+ * 
+ * Key insight: TCP:4646 must complete authentication/activation BEFORE UDP:1563 opens
  */
 public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
 
     private static final String TAG = "M8PlayActivity";
     private static final int STORAGE_PERMISSION_CODE = 1001;
-    private static final int MAX_TCP_BUF = 204800;
+    private static final int MAX_BUF = 204800;
 
-    private static final int NAL_TYPE_SPS = 7;
-    private static final int NAL_TYPE_PPS = 8;
-    private static final int NAL_TYPE_IDR = 5;
-    private static final int NAL_TYPE_SEI = 6;
-    private static final int RTP_HEADER_MIN_SIZE = 12;
-    private static final int RTP_NAL_STAP_A = 24;
-    private static final int RTP_NAL_FU_A = 28;
+    // H264 NAL types
+    private static final int NAL_SPS = 7, NAL_PPS = 8, NAL_IDR = 5, NAL_SEI = 6;
+    // RTP constants
+    private static final int RTP_HDR_MIN = 12, RTP_STAP_A = 24, RTP_FU_A = 28;
+
+    // Handshake bytes from H8 APK native code
+    private static final byte[] HANDSHAKE = {(byte)0xD8, (byte)0xC0, (byte)0xD9};
 
     private SurfaceView surfaceView;
     private SurfaceHolder surfaceHolder;
@@ -97,12 +101,14 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     private DatagramSocket udpSocket;
     private M8Config.Config config;
 
+    // MediaCodec decoder
     private MediaCodec decoder;
     private boolean decoderConfigured = false;
     private byte[] spsData = null;
     private byte[] ppsData = null;
     private BlockingQueue<byte[]> nalQueue = new LinkedBlockingQueue<>(60);
 
+    // Stats
     private int frameCount = 0;
     private int totalPackets = 0;
     private int totalBytes = 0;
@@ -110,9 +116,13 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     private AtomicInteger logCount = new AtomicInteger(0);
     private StringBuilder logBuilder = new StringBuilder();
 
+    // FU-A reassembly
     private int fuSeq = -1;
     private ByteBuffer fuBuffer = null;
     private boolean fuStarted = false;
+
+    // TCP:4646 response collector
+    private final java.util.List<String> tcp4646Responses = new java.util.ArrayList<>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -127,7 +137,6 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        // Prevent double-scan: only start if not already running
         if (!streaming && (streamThread == null || !streamThread.isAlive())) {
             startStreaming();
         }
@@ -206,7 +215,7 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     }
 
     // =========================================================================
-    // Export & Copy Log
+    // Log & Export
     // =========================================================================
 
     private void exportLogToClipboard() {
@@ -248,7 +257,7 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     private static String intToIp(int a) { return ((a&0xFF)+"."+((a>>8)&0xFF)+"."+((a>>16)&0xFF)+"."+((a>>24)&0xFF)); }
 
     // =========================================================================
-    // Log
+    // Logging
     // =========================================================================
 
     private void appendLog(String level, String msg) {
@@ -276,8 +285,10 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         return sb.toString().trim();
     }
 
+    private String truncate(String s, int max) { return s.length() > max ? s.substring(0, max) + "..." : s; }
+
     // =========================================================================
-    // TCP Port Scan (quick)
+    // TCP Port Scan (quick check)
     // =========================================================================
 
     private int[] scanTcpPorts() {
@@ -291,307 +302,38 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                 open[cnt++] = p;
                 s.setSoTimeout(300);
                 try {
-                    BufferedReader br = new BufferedReader(new InputStreamReader(s.getInputStream()));
-                    String banner = br.readLine();
-                    appendLog("I", "[TCP] :" + p + " OPEN banner=" + (banner != null ? truncate(banner, 100) : "(空)"));
+                    byte[] buf = new byte[512];
+                    int n = s.getInputStream().read(buf, 0, buf.length);
+                    if (n > 0) {
+                        String banner = new String(buf, 0, Math.min(n, 200)).split("\r?\n")[0];
+                        appendLog("I", "[TCP] :" + p + " OPEN banner=" + truncate(banner, 100));
+                    } else {
+                        appendLog("I", "[TCP] :" + p + " OPEN (无banner)");
+                    }
                 } catch (Exception e) { appendLog("I", "[TCP] :" + p + " OPEN (无banner)"); }
                 s.close();
             } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
         }
         int[] r = new int[cnt];
         System.arraycopy(open, 0, r, 0, cnt);
-        appendLog("I", "[TCP-SCAN] 开放: " + java.util.Arrays.toString(r));
+        appendLog("I", "[SCAN] 开放: " + java.util.Arrays.toString(r));
         return r;
     }
 
-    private String truncate(String s, int max) { return s.length() > max ? s.substring(0, max) + "..." : s; }
-
     // =========================================================================
-    // Probe TCP:7070 (or whatever ports we find)
+    // STEP 1: TCP:4646 Connect & Query (H8 native protocol)
     // =========================================================================
 
-    private boolean probeTcpVideoPort(int port) {
-        appendLog("I", "[PROBE] 深度探测 TCP:" + port + " ...");
-
-        // Strategy 1: Read the 405 response headers to discover allowed methods
-        appendLog("I", "[PROBE] TCP:" + port + " 读取OPTIONS/GET响应headers...");
-        String[] probePaths = {"/", "/live", "/video", "/stream", "/api/v1/live"};
-        for (String path : probePaths) {
-            if (!streaming) return false;
-            Socket s = null;
-            try {
-                s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 2000);
-                s.setSoTimeout(2000);
-                OutputStream os = s.getOutputStream();
-                // Try GET first to read full response headers (especially Allow header)
-                String req = "GET " + path + " HTTP/1.1\r\nHost: " + config.ip + ":" + port + "\r\nConnection: close\r\n\r\n";
-                os.write(req.getBytes("UTF-8")); os.flush();
-
-                InputStream is = s.getInputStream();
-                byte[] buf = new byte[4096];
-                int n = is.read(buf, 0, buf.length);
-                if (n > 0) {
-                    String head = new String(buf, 0, Math.min(n, 2000));
-                    String[] lines = head.split("\r\n");
-                    for (String line : lines) {
-                        appendLog("I", "[PROBE] GET" + path + ": " + line);
-                        if (line.toLowerCase().startsWith("allow:")) {
-                            appendLog("I", ">>> 发现Allow头! 允许的方法: " + line);
-                        }
-                        if (line.toLowerCase().startsWith("server:")) {
-                            appendLog("I", ">>> Server: " + line);
-                        }
-                        if (line.toLowerCase().startsWith("content-type:")) {
-                            appendLog("I", ">>> " + line);
-                        }
-                        if (line.isEmpty()) break;
-                    }
-                }
-                s.close();
-            } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
-        }
-
-        // Strategy 1b: Try POST requests with various content types
-        appendLog("I", "[PROBE] TCP:" + port + " 尝试POST请求...");
-        String[][] postCmds = {
-            {"/live", "application/json", "{\"CMD\":20,\"PARAM\":\"\"}"},
-            {"/live", "application/json", "{\"action\":\"start\"}"},
-            {"/live", "application/json", "{\"T\":\"live\",\"CMD\":\"VSTART\"}"},
-            {"/video", "application/json", "{\"CMD\":20}"},
-            {"/stream", "application/json", "{\"start\":true}"},
-            {"/", "application/json", "{\"CMD\":0}"},
-            {"/api/v1/start_live", "application/json", "{}"},
-            {"/live", "application/octet-stream", "D8C0D9"},  // binary handshake as POST body
-            {"/", "application/octet-stream", "D8C0D9"},
-            {"/", "text/plain", "start_video"},
-        };
-        for (String[] pc : postCmds) {
-            if (!streaming) return false;
-            Socket s = null;
-            try {
-                s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 1500);
-                s.setSoTimeout(1500);
-                OutputStream os = s.getOutputStream();
-                String body = pc[2];
-                String req = "POST " + pc[0] + " HTTP/1.1\r\nHost: " + config.ip + ":" + port + "\r\n"
-                        + "Content-Type: " + pc[1] + "\r\nContent-Length: " + body.length() + "\r\nConnection: close\r\n\r\n" + body;
-                os.write(req.getBytes("UTF-8")); os.flush();
-
-                InputStream is = s.getInputStream();
-                byte[] buf = new byte[4096];
-                int n = is.read(buf, 0, buf.length);
-                if (n > 0) {
-                    String resp = new String(buf, 0, Math.min(n, 500));
-                    String firstLine = resp.split("\n")[0];
-                    appendLog("I", "[PROBE] POST" + pc[0] + " (" + pc[1].split(";")[0] + ") => " + firstLine + " " + n + "B");
-                    if (firstLine.contains("200") || firstLine.contains("201")) {
-                        appendLog("I", ">>> POST成功! 完整响应:");
-                        String[] lines = resp.split("\r\n");
-                        for (String line : lines) {
-                            appendLog("I", "[PROBE]   " + line);
-                            if (line.isEmpty()) break;
-                        }
-                        appendLog("I", "[PROBE] hex: " + hex(buf, Math.min(n, 64)));
-                    }
-                } else {
-                    appendLog("D", "[PROBE] POST" + pc[0] + " 无响应");
-                }
-                s.close();
-            } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
-        }
-
-        // Strategy 1c: Try WebSocket upgrade
-        appendLog("I", "[PROBE] TCP:" + port + " 尝试WebSocket...");
-        for (String wsPath : new String[]{"/", "/live", "/ws", "/video", "/stream"}) {
-            if (!streaming) return false;
-            Socket s = null;
-            try {
-                s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 1000);
-                s.setSoTimeout(2000);
-                String wsKey = java.util.Base64.getEncoder().encodeToString(("m8probe" + System.currentTimeMillis()).getBytes());
-                String upgrade = "GET " + wsPath + " HTTP/1.1\r\nHost: " + config.ip + ":" + port + "\r\n"
-                        + "Upgrade: websocket\r\nConnection: Upgrade\r\n"
-                        + "Sec-WebSocket-Key: " + wsKey + "\r\n"
-                        + "Sec-WebSocket-Version: 13\r\n\r\n";
-                s.getOutputStream().write(upgrade.getBytes("UTF-8"));
-                s.getOutputStream().flush();
-
-                byte[] buf = new byte[4096];
-                int n = s.getInputStream().read(buf, 0, buf.length);
-                if (n > 0) {
-                    String resp = new String(buf, 0, Math.min(n, 500));
-                    appendLog("I", "[PROBE] WS" + wsPath + ": " + resp.split("\n")[0]);
-                    if (resp.contains("101") || resp.contains("Switching")) {
-                        appendLog("I", ">>> WebSocket升级成功! " + wsPath);
-                        // Read websocket frames
-                        s.close(); return true;
-                    }
-                }
-                s.close();
-            } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
-        }
-
-        // Strategy 1d: Try PUT, DELETE, custom methods
-        appendLog("I", "[PROBE] TCP:" + port + " 尝试其他HTTP方法...");
-        for (String method : new String[]{"POST", "PUT", "OPTIONS", "HEAD"}) {
-            if (!streaming) return false;
-            Socket s = null;
-            try {
-                s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 1000);
-                s.setSoTimeout(1500);
-                String req2 = method + " /live HTTP/1.1\r\nHost: " + config.ip + ":" + port + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-                s.getOutputStream().write(req2.getBytes("UTF-8")); s.getOutputStream().flush();
-                byte[] buf = new byte[4096];
-                int n = s.getInputStream().read(buf, 0, buf.length);
-                if (n > 0) {
-                    String resp = new String(buf, 0, Math.min(n, 500));
-                    appendLog("I", "[PROBE] " + method + " /live => " + resp.split("\n")[0]);
-                    // Print all headers
-                    String[] lines = resp.split("\r\n");
-                    for (String line : lines) {
-                        appendLog("I", "[PROBE]   " + line);
-                        if (line.isEmpty()) break;
-                    }
-                }
-                s.close();
-            } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
-        }
-
-        // Strategy 1e: Try HTTP with binary body (handshake as HTTP body)
-        appendLog("I", "[PROBE] TCP:" + port + " 尝试HTTP+二进制体...");
-        Socket s = null;
-        try {
-            s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 2000);
-            s.setSoTimeout(3000);
-            byte[] handshakeBody = {(byte)0xD8, (byte)0xC0, (byte)0xD9};
-            String req3 = "POST / HTTP/1.1\r\nHost: " + config.ip + ":" + port + "\r\n"
-                    + "Content-Type: application/octet-stream\r\nContent-Length: 3\r\nConnection: close\r\n\r\n";
-            OutputStream os = s.getOutputStream();
-            os.write(req3.getBytes("UTF-8"));
-            os.write(handshakeBody);
-            os.flush();
-
-            // Wait for potential streaming response
-            byte[] bigBuf = new byte[32768];
-            int total = 0;
-            try {
-                while (streaming) {
-                    int n = s.getInputStream().read(bigBuf, total, bigBuf.length - total);
-                    if (n <= 0) break;
-                    total += n;
-                    if (total > 100) break; // Got enough
-                }
-            } catch (Exception e) {}
-            if (total > 0) {
-                appendLog("I", "[PROBE] HTTP+二进制 响应 " + total + "B:");
-                String head = new String(bigBuf, 0, Math.min(total, 500));
-                String[] lines = head.split("\r\n");
-                for (String line : lines) {
-                    appendLog("I", "[PROBE]   " + line);
-                    if (line.isEmpty()) break;
-                }
-                int bodyOff = findHttpBodyStart(bigBuf, total);
-                if (bodyOff > 0 && total > bodyOff) {
-                    appendLog("I", "[PROBE] Body hex: " + hex(java.util.Arrays.copyOfRange(bigBuf, bodyOff, total), Math.min(total - bodyOff, 64)));
-                }
-            }
-            s.close();
-        } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
-
-        // Strategy 2: Try sending video activation JSON commands to this port
-        appendLog("I", "[PROBE] TCP:" + port + " 尝试JSON激活命令...");
-        String[] cmds = {
-            "{\"CMD\":0}",
-            "{\"CMD\":20,\"PARAM\":\"\"}",
-            "{\"T\":\"live\"}",
-            "{\"action\":\"start\",\"type\":\"video\"}",
-            "{\"msg\":\"video_start\"}",
-        };
-        for (String cmd : cmds) {
-            if (!streaming) return false;
-            Socket s2 = null;
-            try {
-                s2 = new Socket(); s2.connect(new InetSocketAddress(config.ip, port), 1000);
-                s2.setSoTimeout(1000);
-                OutputStream os2 = s2.getOutputStream();
-                os2.write((cmd + "\n").getBytes("UTF-8"));
-                os2.flush();
-                appendLog("D", "[PROBE] TCP:" + port + " sent: " + cmd);
-                try {
-                    BufferedReader br2 = new BufferedReader(new InputStreamReader(s2.getInputStream()));
-                    String resp = br2.readLine();
-                    if (resp != null) appendLog("I", "[PROBE] TCP:" + port + " resp: " + truncate(resp, 200));
-                } catch (Exception e) {}
-                s2.close();
-            } catch (Exception e) { if (s2 != null) try { s2.close(); } catch (Exception ig) {} }
-        }
-
-        // Strategy 3: Raw binary handshake on this TCP port
-        appendLog("I", "[PROBE] TCP:" + port + " 尝试二进制握手...");
-        byte[][] handshakes = {
-            {(byte)0xD8, (byte)0xC0, (byte)0xD9},
-            {0x00, (byte)0xD8, (byte)0xC0, (byte)0xD9},
-            "GET / HTTP/1.1\r\n\r\n".getBytes(),
-            "OPTIONS * RTSP/1.0\r\nCSeq: 1\r\n\r\n".getBytes(),
-        };
-        for (byte[] hs : handshakes) {
-            if (!streaming) return false;
-            Socket s3 = null;
-            try {
-                s3 = new Socket(); s3.connect(new InetSocketAddress(config.ip, port), 1000);
-                s3.setSoTimeout(2000);
-                OutputStream os3 = s3.getOutputStream();
-                os3.write(hs);
-                os3.flush();
-                appendLog("D", "[PROBE] TCP:" + port + " sent " + hs.length + "B: " + hex(hs, hs.length));
-                byte[] rbuf3 = new byte[1024];
-                try {
-                    int n = s3.getInputStream().read(rbuf3, 0, rbuf3.length);
-                    if (n > 0) {
-                        appendLog("I", "[PROBE] TCP:" + port + " GOT " + n + "B! hex: " + hex(rbuf3, n));
-                        appendLog("I", "[PROBE] >>> 此端口有响应! 可能是视频端口!");
-                        s3.close();
-                        return true;
-                    }
-                } catch (Exception e) {}
-                s3.close();
-            } catch (Exception e) { if (s3 != null) try { s3.close(); } catch (Exception ig) {} }
-        }
-
-        // Strategy 4: Connect and just wait for data (server might push)
-        appendLog("I", "[PROBE] TCP:" + port + " 等待服务器推送...");
-        Socket s4 = null;
-        try {
-            s4 = new Socket(); s4.connect(new InetSocketAddress(config.ip, port), 2000);
-            s4.setSoTimeout(3000);
-            appendLog("I", "[PROBE] TCP:" + port + " 已连接, 等待3秒...");
-            byte[] rbuf4 = new byte[MAX_TCP_BUF];
-            try {
-                int n = s4.getInputStream().read(rbuf4, 0, rbuf4.length);
-                if (n > 0) {
-                    appendLog("I", "[PROBE] TCP:" + port + " 推送 " + n + "B! hex: " + hex(rbuf4, n));
-                    s4.close();
-                    return true;
-                }
-            } catch (Exception e) {}
-            s4.close();
-        } catch (Exception e) { if (s4 != null) try { s4.close(); } catch (Exception ig) {} }
-
-        return false;
-    }
-
-    private int findHttpBodyStart(byte[] buf, int len) {
-        for (int i = 0; i < len - 3; i++) {
-            if (buf[i] == '\r' && buf[i+1] == '\n' && buf[i+2] == '\r' && buf[i+3] == '\n') return i + 4;
-        }
-        return -1;
-    }
-
-    // =========================================================================
-    // TCP:4646 with proper command exchange
-    // =========================================================================
-
-    private Socket connectTcp4646() {
+    /**
+     * Connect to TCP:4646, exchange JSON commands.
+     * This is the H8's control channel. Must complete BEFORE UDP video port opens.
+     * 
+     * Based on H8 APK analysis:
+     * - App connects TCP:4646 immediately after WiFi association
+     * - Sends JSON queries for firmware version, device info
+     * - Sends video start command {"CMD":20} before UDP handshake
+     */
+    private boolean connectAndQuery4646() {
         Socket s = null;
         try {
             s = new Socket();
@@ -599,54 +341,448 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
             s.setSoTimeout(3000);
             s.setKeepAlive(true);
             s.setTcpNoDelay(true);
-            appendLog("I", "[TCP:4646] 已连接");
+            appendLog("I", "[4646] 已连接 TCP:" + config.tcpPort);
 
-            // Read initial data (server may push JSON immediately)
-            BufferedReader br = new BufferedReader(new InputStreamReader(s.getInputStream()));
-            s.setSoTimeout(3000);
+            OutputStream os = s.getOutputStream();
+            InputStream is = s.getInputStream();
+
+            // Step 1a: Wait for initial server push (some firmware sends version info immediately)
+            appendLog("I", "[4646] 等待初始推送...");
+            String initMsg = null;
             try {
-                String line = br.readLine();
-                if (line != null) {
-                    appendLog("I", "[TCP:4646] 初始: " + truncate(line, 200));
+                BufferedReader br = new BufferedReader(new InputStreamReader(is));
+                s.setSoTimeout(3000);
+                initMsg = br.readLine();
+                if (initMsg != null) {
+                    appendLog("I", "[4646] 服务器推送: " + truncate(initMsg, 300));
                     try {
-                        JSONObject j = new JSONObject(line);
-                        appendLog("I", "[TCP:4646] JSON: " + j.toString());
+                        JSONObject j = new JSONObject(initMsg);
+                        appendLog("I", "[4646] JSON字段: " + j.keys().toString());
                     } catch (Exception ignored) {}
                 }
             } catch (SocketTimeoutException e) {
-                appendLog("I", "[TCP:4646] 无初始数据, 发送查询...");
-                // Send query to wake up connection
-                OutputStream os = s.getOutputStream();
-                JSONObject q = new JSONObject(); q.put("CMD", 0); q.put("PARAM", "");
-                os.write((q.toString() + "\n").getBytes("UTF-8"));
-                os.flush();
-                s.setSoTimeout(2000);
-                try {
-                    String resp = br.readLine();
-                    if (resp != null) appendLog("I", "[TCP:4646] 查询响应: " + truncate(resp, 200));
-                } catch (Exception e2) { appendLog("D", "[TCP:4646] 查询无响应"); }
+                appendLog("I", "[4646] 无初始推送 (正常)");
             }
 
+            // Step 1b: Send query commands (sequence from H8 APK)
+            // H8 sends: {"CMD":0,"PARAM":""} to get device info
+            String[] queries = {
+                "{\"CMD\":0,\"PARAM\":\"\"}",
+                "{\"CMD\":0}",
+                "{\"T\":\"GFW\"}",          // Get firmware
+                "{\"T\":\"GVER\"}",          // Get version
+                "{\"T\":\"GINFO\"}",         // Get device info
+            };
+            
+            for (String q : queries) {
+                if (!streaming) return false;
+                try {
+                    os.write((q + "\n").getBytes("UTF-8"));
+                    os.flush();
+                    appendLog("D", "[4646] 发送: " + q);
+                    s.setSoTimeout(2000);
+                    BufferedReader br = new BufferedReader(new InputStreamReader(is));
+                    String resp = br.readLine();
+                    if (resp != null) {
+                        appendLog("I", "[4646] 响应: " + truncate(resp, 300));
+                        tcp4646Responses.add(resp);
+                        try {
+                            JSONObject j = new JSONObject(resp);
+                            appendLog("I", "[4646] JSON: " + j.toString());
+                        } catch (Exception ignored) {}
+                    } else {
+                        appendLog("D", "[4646] 无响应");
+                    }
+                    Thread.sleep(200);
+                } catch (SocketTimeoutException e) {
+                    appendLog("D", "[4646] 查询超时");
+                } catch (Exception e) {
+                    appendLog("D", "[4646] 查询错误: " + e.getMessage());
+                }
+            }
+
+            // Step 1c: Send VIDEO START command (critical - this activates UDP:1563)
+            appendLog("I", "[4646] >>> 发送视频激活命令 <<<");
+            String[] videoCmds = {
+                "{\"CMD\":20,\"PARAM\":\"\"}",          // Video start (H8 native)
+                "{\"CMD\":20}",
+                "{\"action\":\"start\",\"type\":\"video\"}",
+                "{\"T\":\"VSTART\"}",
+                "{\"msg\":\"video_start\"}",
+                "{\"CMD\":20,\"PARAM\":\"start\"}",
+            };
+
+            boolean activated = false;
+            for (String vc : videoCmds) {
+                if (!streaming) return false;
+                try {
+                    os.write((vc + "\n").getBytes("UTF-8"));
+                    os.flush();
+                    appendLog("I", "[4646] 激活: " + vc);
+                    s.setSoTimeout(2000);
+                    BufferedReader br = new BufferedReader(new InputStreamReader(is));
+                    String resp = br.readLine();
+                    if (resp != null) {
+                        appendLog("I", "[4646] 激活响应: " + truncate(resp, 300));
+                        tcp4646Responses.add(resp);
+                        activated = true;
+                        // Don't break - send all commands to maximize chances
+                    }
+                    Thread.sleep(300);
+                } catch (SocketTimeoutException e) {
+                    appendLog("D", "[4646] 激活超时 (继续尝试下一个)");
+                } catch (Exception e) {
+                    appendLog("D", "[4646] 激活错误: " + e.getMessage());
+                }
+            }
+
+            if (!activated) {
+                appendLog("W", "[4646] 所有激活命令均无响应, UDP可能未开放");
+            } else {
+                appendLog("I", "[4646] 至少一个激活命令有响应");
+            }
+
+            // Wait a bit for firmware to open UDP port
+            appendLog("I", "[4646] 等待2秒让固件开启UDP端口...");
+            Thread.sleep(2000);
+
             // Keep reading in background
-            s.setSoTimeout(0);
+            s.setSoTimeout(100);
             tcpSocket = s;
+            final Socket tcpSock = s;
             tcpThread = new Thread(() -> {
                 try {
-                    String line;
-                    while (streaming && (line = br.readLine()) != null) {
-                        appendLog("D", "[TCP:4646] " + truncate(line, 300));
+                    byte[] buf2 = new byte[4096];
+                    InputStream is2 = tcpSock.getInputStream();
+                    while (streaming) {
+                        try {
+                            int nr = is2.read(buf2, 0, buf2.length);
+                            if (nr <= 0) break;
+                            String msg = new String(buf2, 0, Math.min(nr, 500)).trim();
+                            if (!msg.isEmpty()) {
+                                appendLog("D", "[4646] " + truncate(msg, 300));
+                                tcp4646Responses.add(msg);
+                            }
+                        } catch (SocketTimeoutException e) {
+                            // No data, continue
+                        }
                     }
-                } catch (Exception e) { if (streaming) appendLog("W", "[TCP:4646] 断开: " + e.getMessage()); }
+                } catch (Exception e) {
+                    if (streaming) appendLog("W", "[4646] 断开: " + e.getMessage());
+                }
             }, "TCP4646");
             tcpThread.start();
+
+            return true;
+
         } catch (Exception e) {
-            appendLog("W", "[TCP:4646] 连接失败: " + e.getMessage());
+            appendLog("W", "[4646] 连接失败: " + e.getMessage());
+            return false;
         }
-        return s;
     }
 
     // =========================================================================
-    // Main streaming flow
+    // STEP 2: UDP Video Stream (H8 protocol: handshake + RTP)
+    // =========================================================================
+
+    /**
+     * Connect UDP:1563, send handshake, receive H264 RTP.
+     * Must be called AFTER TCP:4646 activation.
+     * 
+     * H8 APK flow:
+     * 1. Create UDP socket
+     * 2. Send 3-byte handshake {0xD8, 0xC0, 0xD9}
+     * 3. Receive H264 RTP packets
+     * 4. Parse RTP → NAL units → nativeUdpData() → Live555 → H264 decode → SDL2 render
+     */
+    private boolean tryUdpVideoStream(int port) {
+        DatagramSocket ds = null;
+        try {
+            ds = new DatagramSocket(null);
+            ds.setReuseAddress(true);
+            ds.bind(new InetSocketAddress(0));
+            ds.setSoTimeout(5000);  // Longer timeout first time
+            ds.connect(new InetSocketAddress(config.ip, port));
+            udpSocket = ds;
+            appendLog("I", "[UDP] :" + port + " 本地端口=" + ds.getLocalPort());
+
+            // Send H8 native handshake
+            DatagramPacket hpkt = new DatagramPacket(HANDSHAKE, HANDSHAKE.length);
+            ds.send(hpkt);
+            appendLog("I", "[UDP] 握手已发: " + hex(HANDSHAKE, HANDSHAKE.length));
+
+            // Also try alternative handshakes in sequence
+            // If first doesn't work within 3s, try others
+            boolean gotData = false;
+
+            // Start decoder thread
+            Thread dt = new Thread(this::decoderLoop, "DecodeThread");
+            dt.start();
+
+            handler.post(() -> tvStatus.setText("UDP:" + port + " 等待视频..."));
+
+            byte[] buf = new byte[MAX_BUF];
+            int timeouts = 0;
+            int handshakeRetries = 0;
+
+            while (streaming) {
+                try {
+                    DatagramPacket pkt = new DatagramPacket(buf, buf.length);
+                    ds.receive(pkt);
+                    int len = pkt.getLength();
+                    totalPackets++;
+                    totalBytes += len;
+                    timeouts = 0;
+
+                    if (!dataReceived) {
+                        dataReceived = true;
+                        gotData = true;
+                        handler.post(() -> progressBar.setVisibility(View.GONE));
+                        appendLog("I", ">>> UDP首包! port=" + port + " len=" + len);
+                        appendLog("I", ">>> 首包hex: " + hex(buf, Math.min(len, 64)));
+                    }
+
+                    if (totalPackets <= 30) {
+                        appendLog("D", "[UDP] #" + totalPackets + " len=" + len + " [" + hex(buf, Math.min(len, 32)) + "]");
+                    }
+
+                    // Parse the received data
+                    parseVideoData(buf, len);
+
+                    if (totalPackets % 100 == 0) {
+                        long now = System.currentTimeMillis();
+                        double rate = totalBytes * 1000.0 / Math.max(1, now - lastFpsTime);
+                        handler.post(() -> tvStatus.setText("UDP:" + port + " " + String.format("%.0f", rate / 1024) + " KB/s"));
+                        appendLog("I", "[STATS] " + totalPackets + " pkts " + String.format("%.0f", rate) + " B/s");
+                    }
+
+                } catch (SocketTimeoutException e) {
+                    timeouts++;
+                    if (!dataReceived && timeouts >= 2 && handshakeRetries < 5) {
+                        // Try alternative handshake patterns
+                        handshakeRetries++;
+                        appendLog("I", "[UDP] 重试握手 #" + handshakeRetries);
+
+                        byte[][] altHandshakes = {
+                            {0x00, (byte)0xD8, (byte)0xC0, (byte)0xD9},  // 4-byte variant
+                            {(byte)0xAA, (byte)0x55, 0x00, 0x01},        // Alternative pattern
+                            {0x01, 0x00, 0x00, 0x00},                     // Simple ping
+                            HANDSHAKE,                                     // Retry original
+                            "LIVE555".getBytes(),                           // Live555 marker
+                        };
+
+                        byte[] hs = altHandshakes[(handshakeRetries - 1) % altHandshakes.length];
+                        try {
+                            ds.send(new DatagramPacket(hs, hs.length));
+                            appendLog("I", "[UDP] 发送: " + hex(hs, hs.length));
+                        } catch (Exception ignored) {}
+
+                        // Also try resending activation on TCP
+                        if (handshakeRetries == 2) {
+                            resendTcpActivation();
+                        }
+
+                        timeouts = 0;
+                        continue;
+                    }
+
+                    if (!dataReceived && timeouts >= 4) {
+                        appendLog("W", "[UDP] :" + port + " 无数据, 切换策略");
+                        return false;
+                    }
+                    if (dataReceived && timeouts >= 10) {
+                        appendLog("W", "[UDP] 数据中断");
+                        break;
+                    }
+                } catch (PortUnreachableException e) {
+                    appendLog("W", "[UDP] :" + port + " ICMP不可达 - 端口未开放!");
+                    // Try sending activation again
+                    if (handshakeRetries < 2) {
+                        appendLog("I", "[UDP] ICMP不可达, 尝试TCP激活后重试...");
+                        resendTcpActivation();
+                        Thread.sleep(2000);
+                        // Retry handshake
+                        try {
+                            ds.send(new DatagramPacket(HANDSHAKE, HANDSHAKE.length));
+                            appendLog("I", "[UDP] 重新握手");
+                            handshakeRetries = 99; // Skip normal retry
+                            timeouts = 0;
+                            continue;
+                        } catch (Exception ignored) {}
+                    }
+                    return false;
+                }
+            }
+            return dataReceived;
+        } catch (Exception e) {
+            appendLog("W", "[UDP] :" + port + " " + e.getMessage());
+            return false;
+        } finally {
+            if (ds != null && ds != udpSocket) try { ds.close(); } catch (Exception ig) {}
+        }
+    }
+
+    private void resendTcpActivation() {
+        try {
+            if (tcpSocket != null && tcpSocket.isConnected() && !tcpSocket.isClosed()) {
+                String[] cmds = {
+                    "{\"CMD\":20,\"PARAM\":\"\"}",
+                    "{\"CMD\":20}",
+                    "{\"T\":\"VSTART\"}",
+                };
+                for (String cmd : cmds) {
+                    try {
+                        OutputStream os = tcpSocket.getOutputStream();
+                        os.write((cmd + "\n").getBytes("UTF-8"));
+                        os.flush();
+                        appendLog("I", "[4646-RETRY] " + cmd);
+                    } catch (Exception e) {
+                        appendLog("D", "[4646-RETRY] 失败: " + e.getMessage());
+                        break;
+                    }
+                    Thread.sleep(200);
+                }
+            } else {
+                appendLog("D", "[4646-RETRY] TCP未连接, 新建连接重试...");
+                Socket s2 = null;
+                try {
+                    s2 = new Socket();
+                    s2.connect(new InetSocketAddress(config.ip, config.tcpPort), 2000);
+                    s2.setSoTimeout(1000);
+                    OutputStream os = s2.getOutputStream();
+                    os.write(("{\"CMD\":20,\"PARAM\":\"\"}\n").getBytes("UTF-8"));
+                    os.flush();
+                    BufferedReader br = new BufferedReader(new InputStreamReader(s2.getInputStream()));
+                    String r = br.readLine();
+                    if (r != null) appendLog("I", "[4646-RETRY] 响应: " + truncate(r, 200));
+                    s2.close();
+                } catch (Exception e) {
+                    if (s2 != null) try { s2.close(); } catch (Exception ig) {}
+                }
+            }
+        } catch (Exception e) {
+            appendLog("D", "[4646-RETRY] 错误: " + e.getMessage());
+        }
+    }
+
+    // =========================================================================
+    // STEP 3 (Fallback): TCP Video Stream
+    // =========================================================================
+
+    private boolean tryTcpVideoStream(int port) {
+        Socket s = null;
+        try {
+            s = new Socket();
+            s.connect(new InetSocketAddress(config.ip, port), 3000);
+            s.setSoTimeout(5000);
+            s.setReceiveBufferSize(MAX_BUF);
+            appendLog("I", "[TCP-VIDEO] :" + port + " 已连接");
+
+            // Send handshake
+            OutputStream os = s.getOutputStream();
+            os.write(HANDSHAKE);
+            os.flush();
+            appendLog("I", "[TCP-VIDEO] 握手已发");
+
+            Thread dt = new Thread(this::decoderLoop, "DecodeThread");
+            dt.start();
+
+            handler.post(() -> tvStatus.setText("TCP:" + port + " 等待视频..."));
+
+            byte[] buf = new byte[MAX_BUF];
+            int timeouts = 0;
+
+            while (streaming) {
+                try {
+                    int n = s.getInputStream().read(buf, 0, buf.length);
+                    if (n <= 0) { appendLog("W", "[TCP-VIDEO] EOF"); break; }
+                    totalPackets++;
+                    totalBytes += n;
+                    timeouts = 0;
+
+                    if (!dataReceived) {
+                        dataReceived = true;
+                        handler.post(() -> progressBar.setVisibility(View.GONE));
+                        appendLog("I", ">>> TCP首数据! port=" + port + " len=" + n);
+                        appendLog("I", ">>> 首包hex: " + hex(buf, Math.min(n, 64)));
+                    }
+
+                    if (totalPackets <= 20) {
+                        appendLog("D", "[TCP-VIDEO] #" + totalPackets + " len=" + n + " [" + hex(buf, Math.min(n, 32)) + "]");
+                    }
+
+                    parseVideoData(buf, n);
+
+                    if (totalPackets % 100 == 0) {
+                        long now = System.currentTimeMillis();
+                        double rate = totalBytes * 1000.0 / Math.max(1, now - lastFpsTime);
+                        handler.post(() -> tvStatus.setText("TCP:" + port + " " + String.format("%.0f", rate / 1024) + " KB/s"));
+                        appendLog("I", "[STATS] " + totalPackets + " pkts " + String.format("%.0f", rate) + " B/s");
+                    }
+
+                } catch (SocketTimeoutException e) {
+                    timeouts++;
+                    if (!dataReceived && timeouts >= 3) {
+                        appendLog("I", "[TCP-VIDEO] 无数据, 切换");
+                        break;
+                    }
+                    try { os.write(HANDSHAKE); os.flush(); } catch (Exception ig) {}
+                }
+            }
+            s.close();
+            return dataReceived;
+        } catch (Exception e) {
+            appendLog("W", "[TCP-VIDEO] :" + port + " " + e.getMessage());
+            if (s != null) try { s.close(); } catch (Exception ig) {}
+            return false;
+        }
+    }
+
+    // =========================================================================
+    // Video Data Parser (handles H264 raw, RTP, MJPEG, HTTP)
+    // =========================================================================
+
+    private void parseVideoData(byte[] buf, int len) {
+        // 1. Check for H264 start codes (00 00 00 01 or 00 00 01)
+        int nalStart = findH264Start(buf, len);
+        if (nalStart >= 0) {
+            if (totalPackets <= 10) appendLog("D", "[DATA] H264 start code at offset " + nalStart);
+            parseH264Stream(buf, len);
+            return;
+        }
+
+        // 2. Check for MJPEG (FF D8)
+        for (int i = 0; i < Math.min(len - 1, 100); i++) {
+            if ((buf[i] & 0xFF) == 0xFF && (buf[i+1] & 0xFF) == 0xD8) {
+                appendLog("I", "[DATA] JPEG at offset " + i + " - MJPEG流!");
+                return;
+            }
+        }
+
+        // 3. Check if RTP packet (version=2, top 2 bits = 10)
+        if (len >= RTP_HDR_MIN && ((buf[0] >> 6) & 0x03) == 2) {
+            if (totalPackets <= 5) appendLog("D", "[DATA] RTP packet detected");
+            parseRtpPacket(buf, len);
+            return;
+        }
+
+        // 4. Check if HTTP response
+        if (len >= 4 && buf[0] == 'H' && buf[1] == 'T' && buf[2] == 'T' && buf[3] == 'P') {
+            if (totalPackets <= 5) {
+                String header = new String(buf, 0, Math.min(len, 200));
+                String firstLine = header.split("\r?\n")[0];
+                appendLog("D", "[DATA] HTTP: " + firstLine);
+            }
+            return;
+        }
+
+        if (totalPackets <= 10) {
+            appendLog("D", "[DATA] 未知格式 first=" + hex(buf, Math.min(len, 32)));
+        }
+    }
+
+    // =========================================================================
+    // Main Connection Flow
     // =========================================================================
 
     private void startStreaming() {
@@ -657,63 +793,83 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         fuStarted = false; fuBuffer = null; fuSeq = -1;
         spsData = null; ppsData = null;
         frameCount = 0; totalPackets = 0; totalBytes = 0;
+        tcp4646Responses.clear();
 
         progressBar.setVisibility(View.VISIBLE);
         lyNotConnected.setVisibility(View.GONE);
         tvStatus.setVisibility(View.VISIBLE);
-        tvStatus.setText("扫描中...");
+        tvStatus.setText("连接中...");
         if (btnConnect != null) btnConnect.setVisibility(View.GONE);
 
-        appendLog("I", "========== 开始连接 (v0.0.92-7070probe) ==========");
+        appendLog("I", "========== v0.0.94 H8协议模式 ==========");
         logNetworkDiagnostics();
 
         streamThread = new Thread(() -> {
             try {
-                // Phase 1: TCP scan
+                // Phase 1: Quick TCP port scan
                 appendLog("I", "[PHASE1] TCP端口扫描...");
                 int[] tcpPorts = scanTcpPorts();
 
-                // Phase 2: Connect TCP:4646 for control
-                appendLog("I", "[PHASE2] 连接TCP:4646...");
-                connectTcp4646();
+                // Phase 2: Connect TCP:4646 + query + activate video
+                appendLog("I", "[PHASE2] 连接TCP:4646 → 查询 → 激活视频");
+                boolean tcp4646Ok = false;
+                for (int p : tcpPorts) {
+                    if (p == 4646 || p == config.tcpPort) {
+                        // Try 4646 first, then configured port
+                        if (p != 4646) continue;
+                        tcp4646Ok = connectAndQuery4646();
+                        if (tcp4646Ok) break;
+                    }
+                }
+                if (!tcp4646Ok && config.tcpPort != 4646) {
+                    // Try configured TCP port
+                    appendLog("I", "[PHASE2] 4646不可用, 尝试TCP:" + config.tcpPort);
+                    tcp4646Ok = connectAndQuery4646();
+                }
+
+                if (!tcp4646Ok) {
+                    appendLog("W", "[PHASE2] TCP控制连接失败, 仍然尝试UDP...");
+                }
+
                 Thread.sleep(500);
 
-                // Phase 3: Probe each open TCP port (especially 7070)
-                for (int port : tcpPorts) {
-                    if (!streaming) break;
-                    if (port == config.tcpPort) continue; // Already connected
-                    appendLog("I", "[PHASE3] 探测 TCP:" + port + "...");
-                    boolean gotResponse = probeTcpVideoPort(port);
-                    if (gotResponse) {
-                        appendLog("I", "[PHASE3] TCP:" + port + " 有响应! 标记为候选视频端口");
-                    }
-                    Thread.sleep(300);
-                }
+                // Phase 3: Try UDP video (primary - H8 native protocol)
+                appendLog("I", "[PHASE3] UDP:" + config.udpPort + " H264/RTP视频流");
+                boolean videoOk = tryUdpVideoStream(config.udpPort);
 
-                // Phase 4: Try to establish video stream on most likely port
-                appendLog("I", "[PHASE4] 建立视频流连接...");
-                boolean videoOk = false;
-
-                // Try TCP streaming on discovered ports
-                for (int port : tcpPorts) {
-                    if (!streaming) break;
-                    if (port == config.tcpPort) continue;
-                    appendLog("I", "[PHASE4] 尝试TCP视频流 :" + port + "...");
-                    videoOk = tryTcpVideoStream(port);
-                    if (videoOk) {
-                        appendLog("I", ">>> 视频流已建立 on TCP:" + port);
-                        break;
-                    }
-                }
-
+                // Phase 4: If UDP failed, scan more UDP ports
                 if (!videoOk) {
-                    // Also try configured UDP port
-                    appendLog("I", "[PHASE4] 尝试UDP视频流 :" + config.udpPort + "...");
-                    videoOk = tryUdpVideoStream(config.udpPort);
+                    appendLog("I", "[PHASE4] UDP:" + config.udpPort + " 失败, 扫描其他UDP端口...");
+                    int[] altUdpPorts = {1563, 8554, 554, 5000, 5004, 5001, 1234, 19798, 2228, 6666};
+                    for (int up : altUdpPorts) {
+                        if (up == config.udpPort || !streaming) continue;
+                        appendLog("I", "[PHASE4] 尝试UDP:" + up + "...");
+                        videoOk = tryUdpVideoStream(up);
+                        if (videoOk) break;
+                    }
+                }
+
+                // Phase 5: If all UDP failed, try TCP video on discovered ports
+                if (!videoOk) {
+                    appendLog("I", "[PHASE5] UDP全部失败, 尝试TCP视频流...");
+                    for (int tp : tcpPorts) {
+                        if (!streaming) break;
+                        if (tp == config.tcpPort) continue; // Already using for control
+                        appendLog("I", "[PHASE5] 尝试TCP视频:" + tp + "...");
+                        videoOk = tryTcpVideoStream(tp);
+                        if (videoOk) {
+                            appendLog("I", ">>> TCP视频连接! port=" + tp);
+                            break;
+                        }
+                    }
                 }
 
                 if (!videoOk && streaming) {
-                    appendLog("E", "未建立视频连接");
+                    appendLog("E", "===== 未建立视频连接 =====");
+                    appendLog("I", "排查建议:");
+                    appendLog("I", "1. 确认无人机已开机并连上M8_xxx WiFi");
+                    appendLog("I", "2. 确认原厂HFun App可以正常看视频");
+                    appendLog("I", "3. 在无人机热点下用tcpdump抓包验证端口");
                     handler.post(() -> {
                         progressBar.setVisibility(View.GONE);
                         lyNotConnected.setVisibility(View.VISIBLE);
@@ -733,133 +889,8 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     }
 
     // =========================================================================
-    // Try TCP video stream (raw socket read)
+    // H264 Stream Parser
     // =========================================================================
-
-    private boolean tryTcpVideoStream(int port) {
-        Socket s = null;
-        try {
-            s = new Socket();
-            s.connect(new InetSocketAddress(config.ip, port), 3000);
-            s.setSoTimeout(5000);
-            s.setReceiveBufferSize(MAX_TCP_BUF);
-            appendLog("I", "[TCP-VIDEO] :" + port + " 已连接 bufsize=" + s.getReceiveBufferSize());
-
-            // Send handshake
-            OutputStream os = s.getOutputStream();
-            byte[] handshake = {(byte)0xD8, (byte)0xC0, (byte)0xD9};
-            os.write(handshake);
-            os.flush();
-            appendLog("I", "[TCP-VIDEO] 握手已发");
-
-            // Start decoder
-            Thread dt = new Thread(this::decoderLoop, "DecodeThread");
-            dt.start();
-
-            handler.post(() -> tvStatus.setText("TCP:" + port + " 等待视频..."));
-
-            // Read loop
-            byte[] buf = new byte[MAX_TCP_BUF];
-            int timeouts = 0;
-
-            while (streaming) {
-                try {
-                    int n = s.getInputStream().read(buf, 0, buf.length);
-                    if (n <= 0) { appendLog("W", "[TCP-VIDEO] EOF"); break; }
-                    totalPackets++;
-                    totalBytes += n;
-                    timeouts = 0;
-
-                    if (!dataReceived) {
-                        dataReceived = true;
-                        handler.post(() -> progressBar.setVisibility(View.GONE));
-                        appendLog("I", ">>> TCP首数据! port=" + port + " len=" + n);
-                    }
-
-                    if (totalPackets <= 20) {
-                        appendLog("D", "[TCP-VIDEO] #" + totalPackets + " len=" + n + " [" + hex(buf, Math.min(n, 64)) + "]");
-                    }
-
-                    // Parse data
-                    parseTcpData(buf, n);
-
-                    if (totalPackets % 100 == 0) {
-                        long now = System.currentTimeMillis();
-                        double rate = totalBytes * 1000.0 / Math.max(1, now - lastFpsTime);
-                        handler.post(() -> tvStatus.setText("TCP:" + port + " " + String.format("%.0f", rate / 1024) + " KB/s"));
-                        appendLog("I", "[STATS] " + totalPackets + " pkts " + String.format("%.0f", rate) + " B/s");
-                    }
-
-                } catch (SocketTimeoutException e) {
-                    timeouts++;
-                    appendLog("D", "[TCP-VIDEO] 超时#" + timeouts);
-                    if (!dataReceived && timeouts >= 3) {
-                        appendLog("I", "[TCP-VIDEO] 无数据, 切换端口");
-                        break;
-                    }
-                    // Resend handshake
-                    try { os.write(handshake); os.flush(); } catch (Exception ig) {}
-                }
-            }
-            s.close();
-            return dataReceived;
-        } catch (Exception e) {
-            appendLog("W", "[TCP-VIDEO] :" + port + " " + e.getMessage());
-            if (s != null) try { s.close(); } catch (Exception ig) {}
-            return false;
-        }
-    }
-
-    // =========================================================================
-    // Parse TCP data (could be HTTP/MJPEG, raw H264, RTP over TCP, etc.)
-    // =========================================================================
-
-    private void parseTcpData(byte[] buf, int len) {
-        // Check for H264 start codes
-        int nalStart = findH264Start(buf, len);
-        if (nalStart >= 0) {
-            appendLog("I", "[TCP-DATA] 检测到H264 start code at offset " + nalStart);
-            // Extract NAL units
-            parseH264Stream(buf, len);
-            return;
-        }
-
-        // Check for MJPEG (FF D8)
-        for (int i = 0; i < len - 1; i++) {
-            if ((buf[i] & 0xFF) == 0xFF && (buf[i+1] & 0xFF) == 0xD8) {
-                appendLog("I", "[TCP-DATA] 检测到JPEG at offset " + i + " - MJPEG流!");
-                // For now just log it, would need different decoder
-                return;
-            }
-        }
-
-        // Check if it looks like RTP
-        if (len >= RTP_HEADER_MIN_SIZE && ((buf[0] >> 6) & 0x03) == 2) {
-            if (totalPackets <= 5) appendLog("D", "[TCP-DATA] 可能是RTP over TCP");
-            parseRtpPacket(buf, len);
-            return;
-        }
-
-        // Check if HTTP response
-        if (len >= 4 && buf[0] == 'H' && buf[1] == 'T' && buf[2] == 'T' && buf[3] == 'P') {
-            String header = new String(buf, 0, Math.min(len, 500));
-            String[] lines = header.split("\r\n");
-            for (String line : lines) {
-                if (totalPackets <= 5) appendLog("D", "[TCP-DATA] HTTP: " + line);
-                if (line.isEmpty()) break;
-            }
-            int bodyStart = findHttpBodyStart(buf, len);
-            if (bodyStart > 0 && bodyStart < len) {
-                appendLog("I", "[TCP-DATA] HTTP body at " + bodyStart + " len=" + (len - bodyStart));
-                parseTcpData(java.util.Arrays.copyOfRange(buf, bodyStart, len), len - bodyStart);
-            }
-            return;
-        }
-
-        if (totalPackets <= 10) {
-            appendLog("D", "[TCP-DATA] 未知格式 first=" + hex(buf, Math.min(len, 32)));
-        }
-    }
 
     private int findH264Start(byte[] buf, int len) {
         for (int i = 0; i < len - 3; i++) {
@@ -871,7 +902,6 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     }
 
     private void parseH264Stream(byte[] buf, int len) {
-        // Find NAL units by start codes (00 00 00 01 or 00 00 01)
         int i = 0;
         while (i < len - 3) {
             int start = -1;
@@ -879,7 +909,6 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
             else if (buf[i] == 0 && buf[i+1] == 0 && buf[i+2] == 1) start = i + 3;
 
             if (start >= 0 && start < len) {
-                // Find end
                 int end = len;
                 for (int j = start + 1; j < len - 3; j++) {
                     if (buf[j] == 0 && buf[j+1] == 0 && (buf[j+2] == 1 || (buf[j+2] == 0 && buf[j+3] == 1))) {
@@ -888,14 +917,7 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                 }
                 byte[] nal = new byte[end - start];
                 System.arraycopy(buf, start, nal, 0, nal.length);
-
-                if (nal.length > 0) {
-                    int nalType = (nal[0] & 0xFF) & 0x1F;
-                    if (totalPackets <= 20) {
-                        appendLog("D", "[H264] NAL type=" + nalType + " size=" + nal.length);
-                    }
-                    handleNalUnit(nal);
-                }
+                if (nal.length > 0) handleNalUnit(nal);
                 i = start + 1;
             } else {
                 i++;
@@ -904,68 +926,7 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     }
 
     // =========================================================================
-    // Try UDP video stream
-    // =========================================================================
-
-    private boolean tryUdpVideoStream(int port) {
-        DatagramSocket ds = null;
-        try {
-            ds = new DatagramSocket(null);
-            ds.setReuseAddress(true);
-            ds.bind(new InetSocketAddress(0));
-            ds.setSoTimeout(3000);
-            ds.connect(new InetSocketAddress(config.ip, port));
-            appendLog("I", "[UDP-VIDEO] :" + port + " 本地=" + ds.getLocalPort());
-
-            byte[] hs = {(byte)0xD8, (byte)0xC0, (byte)0xD9};
-            DatagramPacket hpkt = new DatagramPacket(hs, hs.length);
-            ds.send(hpkt);
-            appendLog("I", "[UDP-VIDEO] 握手已发");
-
-            Thread dt = new Thread(this::decoderLoop, "DecodeThread");
-            dt.start();
-
-            byte[] buf = new byte[MAX_TCP_BUF];
-            int timeouts = 0;
-
-            while (streaming) {
-                try {
-                    DatagramPacket pkt = new DatagramPacket(buf, buf.length);
-                    ds.receive(pkt);
-                    int len = pkt.getLength();
-                    totalPackets++; totalBytes += len; timeouts = 0;
-
-                    if (!dataReceived) {
-                        dataReceived = true;
-                        handler.post(() -> progressBar.setVisibility(View.GONE));
-                        appendLog("I", ">>> UDP首包! port=" + port + " len=" + len);
-                    }
-                    if (totalPackets <= 20) appendLog("D", "[UDP] #" + totalPackets + " len=" + len + " [" + hex(buf, Math.min(len, 64)) + "]");
-
-                    if (len >= RTP_HEADER_MIN_SIZE && ((buf[0] >> 6) & 0x03) == 2) {
-                        parseRtpPacket(buf, len);
-                    } else if (findH264Start(buf, len) >= 0) {
-                        parseH264Stream(buf, len);
-                    }
-
-                } catch (SocketTimeoutException e) {
-                    timeouts++;
-                    if (!dataReceived && timeouts >= 2) { appendLog("I", "[UDP-VIDEO] 无数据"); return false; }
-                    if (dataReceived && timeouts >= 5) { appendLog("W", "[UDP-VIDEO] 数据中断"); break; }
-                } catch (PortUnreachableException e) {
-                    appendLog("W", "[UDP-VIDEO] :" + port + " ICMP不可达");
-                    return false;
-                }
-            }
-            return dataReceived;
-        } catch (Exception e) {
-            appendLog("W", "[UDP-VIDEO] :" + port + " " + e.getMessage());
-            return false;
-        } finally { if (ds != null) try { ds.close(); } catch (Exception ig) {} }
-    }
-
-    // =========================================================================
-    // RTP + NAL parsing (same as before)
+    // RTP Parser
     // =========================================================================
 
     private void parseRtpPacket(byte[] data, int length) {
@@ -978,7 +939,7 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         int payloadType = data[1] & 0x7F;
         int seqNum = ((data[2] & 0xFF) << 8) | (data[3] & 0xFF);
 
-        int headerSize = RTP_HEADER_MIN_SIZE + (csrcCount * 4);
+        int headerSize = RTP_HDR_MIN + (csrcCount * 4);
         if (extension == 1 && length > headerSize + 4) {
             int extLen = ((data[headerSize+2] & 0xFF) << 8) | (data[headerSize+3] & 0xFF);
             headerSize += 4 + (extLen * 4);
@@ -989,24 +950,27 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         if (padding == 1 && payloadLength > 0) payloadLength -= (data[length-1] & 0xFF);
         if (payloadLength <= 0) return;
 
-        if (totalPackets <= 5) appendLog("D", String.format("RTP: PT=%d Seq=%d M=%d Pay=%d", payloadType, seqNum, marker, payloadLength));
+        if (totalPackets <= 5) {
+            appendLog("D", String.format("RTP: PT=%d Seq=%d M=%d Pay=%d", payloadType, seqNum, marker, payloadLength));
+        }
 
         int nalHeaderByte = data[payloadOffset] & 0xFF;
         int nalType = nalHeaderByte & 0x1F;
 
         if (nalType >= 1 && nalType <= 23) {
+            // Single NAL unit
             byte[] nal = new byte[payloadLength + 4];
             nal[0] = 0; nal[1] = 0; nal[2] = 0; nal[3] = 1;
             System.arraycopy(data, payloadOffset, nal, 4, payloadLength);
             handleNalUnit(nal);
-        } else if (nalType == RTP_NAL_STAP_A) {
-            parseStapA(data, payloadOffset, payloadLength, marker);
-        } else if (nalType == RTP_NAL_FU_A) {
+        } else if (nalType == RTP_STAP_A) {
+            parseStapA(data, payloadOffset, payloadLength);
+        } else if (nalType == RTP_FU_A) {
             parseFuA(data, payloadOffset, payloadLength, seqNum, marker);
         }
     }
 
-    private void parseStapA(byte[] data, int offset, int length, int marker) {
+    private void parseStapA(byte[] data, int offset, int length) {
         int pos = offset + 1;
         while (pos + 2 < offset + length) {
             int nalSize = ((data[pos] & 0xFF) << 8) | (data[pos+1] & 0xFF);
@@ -1059,12 +1023,11 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     }
 
     // =========================================================================
-    // NAL handling + MediaCodec
+    // NAL Handling + MediaCodec
     // =========================================================================
 
     private void handleNalUnit(byte[] nal) {
         if (nal.length < 5) return;
-        // nal might have 00 00 00 01 prefix or not
         int dataOff = 0;
         if (nal.length >= 4 && nal[0] == 0 && nal[1] == 0 && nal[2] == 0 && nal[3] == 1) dataOff = 4;
         else if (nal.length >= 3 && nal[0] == 0 && nal[1] == 0 && nal[2] == 1) dataOff = 3;
@@ -1072,21 +1035,21 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         if (nal.length - dataOff < 1) return;
         int nalType = (nal[dataOff] & 0xFF) & 0x1F;
 
-        if (nalType == NAL_TYPE_SPS) {
+        if (nalType == NAL_SPS) {
             spsData = new byte[nal.length - dataOff];
             System.arraycopy(nal, dataOff, spsData, 0, spsData.length);
             appendLog("I", ">>> SPS! size=" + spsData.length + " [" + hex(spsData, Math.min(spsData.length, 32)) + "]");
             tryConfigureDecoder();
             return;
         }
-        if (nalType == NAL_TYPE_PPS) {
+        if (nalType == NAL_PPS) {
             ppsData = new byte[nal.length - dataOff];
             System.arraycopy(nal, dataOff, ppsData, 0, ppsData.length);
             appendLog("I", ">>> PPS! size=" + ppsData.length + " [" + hex(ppsData, Math.min(ppsData.length, 16)) + "]");
             tryConfigureDecoder();
             return;
         }
-        if (nalType == NAL_TYPE_SEI) return;
+        if (nalType == NAL_SEI) return;
 
         if (decoderConfigured) {
             if (nalQueue.remainingCapacity() == 0) nalQueue.poll();
@@ -1098,21 +1061,25 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         if (decoderConfigured || spsData == null || ppsData == null) return;
         handler.post(() -> {
             if (decoderConfigured) return;
-            int[][] res = {{1280,720},{960,720},{856,480},{640,480},{1920,1080}};
+            int[][] res = {{1280,720},{960,720},{856,480},{640,480},{1920,1080},{854,480},{640,360}};
             for (int[] r : res) {
                 try {
                     MediaFormat fmt = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, r[0], r[1]);
                     fmt.setByteBuffer("csd-0", ByteBuffer.wrap(spsData));
                     fmt.setByteBuffer("csd-1", ByteBuffer.wrap(ppsData));
-                    fmt.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, MAX_TCP_BUF);
+                    fmt.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, MAX_BUF);
                     decoder = MediaCodec.createDecoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);
                     decoder.configure(fmt, surfaceHolder.getSurface(), null, 0);
                     decoder.start();
                     decoderConfigured = true;
-                    appendLog("I", ">>> MediaCodec! " + r[0] + "x" + r[1]);
+                    appendLog("I", ">>> MediaCodec启动! " + r[0] + "x" + r[1]);
                     return;
-                } catch (Exception e) { if (decoder != null) { try { decoder.release(); } catch (Exception ig) {} decoder = null; } }
+                } catch (Exception e) {
+                    if (decoder != null) { try { decoder.release(); } catch (Exception ig) {} decoder = null; }
+                    appendLog("D", "[CODEC] " + r[0] + "x" + r[1] + " 失败: " + e.getMessage());
+                }
             }
+            appendLog("W", "[CODEC] 所有分辨率均失败");
         });
     }
 
@@ -1130,10 +1097,9 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                     if (inBuf != null) {
                         inBuf.clear(); inBuf.put(nal);
                         int flags = 0;
-                        // Find NAL type
                         int off = (nal.length >= 4 && nal[0]==0 && nal[1]==0 && nal[2]==0 && nal[3]==1) ? 4 :
                                   (nal.length >= 3 && nal[0]==0 && nal[1]==0 && nal[2]==1) ? 3 : 0;
-                        if (off < nal.length) { int t = (nal[off] & 0xFF) & 0x1F; if (t == NAL_TYPE_IDR) flags |= MediaCodec.BUFFER_FLAG_KEY_FRAME; }
+                        if (off < nal.length) { int t = (nal[off] & 0xFF) & 0x1F; if (t == NAL_IDR) flags |= MediaCodec.BUFFER_FLAG_KEY_FRAME; }
                         decoder.queueInputBuffer(inIdx, 0, nal.length, System.nanoTime() / 1000, flags);
                     }
                 }
@@ -1153,7 +1119,7 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                     decoder.releaseOutputBuffer(outIdx, true);
                 } else if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                     MediaFormat fmt = decoder.getOutputFormat();
-                    appendLog("I", "[CODEC] " + fmt.getInteger(MediaFormat.KEY_WIDTH) + "x" + fmt.getInteger(MediaFormat.KEY_HEIGHT));
+                    appendLog("I", "[CODEC] 输出: " + fmt.getInteger(MediaFormat.KEY_WIDTH) + "x" + fmt.getInteger(MediaFormat.KEY_HEIGHT));
                 }
             } catch (InterruptedException e) { break; }
             catch (Exception e) {
@@ -1171,7 +1137,7 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     }
 
     // =========================================================================
-    // Connection management
+    // Connection Management
     // =========================================================================
 
     private void stopStreaming() {
@@ -1204,12 +1170,28 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     }
 
     // =========================================================================
-    // TCP commands
+    // TCP Commands
     // =========================================================================
 
     private void sendTcpCommand(String cmd) {
         appendLog("I", "[CMD] " + cmd);
         new Thread(() -> {
+            // Try existing connection first
+            if (tcpSocket != null && tcpSocket.isConnected() && !tcpSocket.isClosed()) {
+                try {
+                    OutputStream os = tcpSocket.getOutputStream();
+                    JSONObject j = new JSONObject();
+                    j.put("CMD", getCmdCode(cmd)); j.put("PARAM", "");
+                    os.write((j.toString() + "\n").getBytes("UTF-8"));
+                    os.flush();
+                    appendLog("I", "[CMD] 已通过现有4646连接发送");
+                    handler.post(() -> Toast.makeText(this, getCmdLabel(cmd) + " 已发送", Toast.LENGTH_SHORT).show());
+                    return;
+                } catch (Exception e) {
+                    appendLog("D", "[CMD] 现有连接发送失败, 新建连接");
+                }
+            }
+
             Socket s = null;
             try {
                 s = new Socket();
