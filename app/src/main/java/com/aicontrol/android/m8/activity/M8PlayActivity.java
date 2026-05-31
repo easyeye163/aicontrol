@@ -127,7 +127,10 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (!streaming) startStreaming();
+        // Prevent double-scan: only start if not already running
+        if (!streaming && (streamThread == null || !streamThread.isAlive())) {
+            startStreaming();
+        }
     }
 
     @Override
@@ -310,107 +313,217 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     private boolean probeTcpVideoPort(int port) {
         appendLog("I", "[PROBE] 深度探测 TCP:" + port + " ...");
 
-        // Strategy 1: HTTP GET requests (common video endpoints)
-        String[] httpPaths = {
-            "/live", "/live/0", "/video", "/stream",
-            "/live/ch00_0.264", "/live/ch00_0", "/live/stream1",
-            "/camera", "/cam", "/mjpeg",
-            "/api/video", "/api/live", "/api/stream",
-            "/h264", "/h264/live", "/h264stream",
-            "/", "/index.html", "/video.h264",
-            "/snap.jpg", "/photo.jpg",
-        };
-
-        for (String path : httpPaths) {
+        // Strategy 1: Read the 405 response headers to discover allowed methods
+        appendLog("I", "[PROBE] TCP:" + port + " 读取OPTIONS/GET响应headers...");
+        String[] probePaths = {"/", "/live", "/video", "/stream", "/api/v1/live"};
+        for (String path : probePaths) {
             if (!streaming) return false;
             Socket s = null;
             try {
-                s = new Socket();
-                s.connect(new InetSocketAddress(config.ip, port), 2000);
+                s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 2000);
                 s.setSoTimeout(2000);
                 OutputStream os = s.getOutputStream();
+                // Try GET first to read full response headers (especially Allow header)
                 String req = "GET " + path + " HTTP/1.1\r\nHost: " + config.ip + ":" + port + "\r\nConnection: close\r\n\r\n";
-                os.write(req.getBytes("UTF-8"));
-                os.flush();
+                os.write(req.getBytes("UTF-8")); os.flush();
 
-                // Read response
                 InputStream is = s.getInputStream();
                 byte[] buf = new byte[4096];
-                int total = 0;
-                long t0 = System.currentTimeMillis();
-                int firstRead = 0;
-                try { firstRead = is.read(buf, 0, buf.length); } catch (Exception e) { firstRead = -1; }
-
-                if (firstRead > 0) {
-                    String head = new String(buf, 0, Math.min(firstRead, 500));
-                    String firstLine = head.split("\n")[0];
-
-                    appendLog("I", "[PROBE] TCP:" + port + " GET" + path + " => " + firstLine + " (" + firstRead + "B)");
-
-                    // Check if it's a video stream
-                    if (firstLine.contains("200")) {
-                        appendLog("I", "[PROBE] >>> HTTP 200! Headers:");
-                        String[] lines = head.split("\r\n");
-                        for (String hl : lines) {
-                            appendLog("I", "[PROBE]   " + hl);
-                            if (hl.toLowerCase().contains("content-type")) {
-                                appendLog("I", "[PROBE] >>> Content-Type found!");
-                            }
+                int n = is.read(buf, 0, buf.length);
+                if (n > 0) {
+                    String head = new String(buf, 0, Math.min(n, 2000));
+                    String[] lines = head.split("\r\n");
+                    for (String line : lines) {
+                        appendLog("I", "[PROBE] GET" + path + ": " + line);
+                        if (line.toLowerCase().startsWith("allow:")) {
+                            appendLog("I", ">>> 发现Allow头! 允许的方法: " + line);
                         }
-                        appendLog("I", "[PROBE] First bytes hex: " + hex(buf, Math.min(firstRead, 64)));
-
-                        // Check if H264 (0x00 0x00 0x00 0x01)
-                        if (firstRead >= 4 && buf[0] == 0 && buf[1] == 0) {
-                            // Check after HTTP headers
-                            int bodyStart = findHttpBodyStart(buf, firstRead);
-                            if (bodyStart > 0 && bodyStart + 4 < firstRead) {
-                                appendLog("I", "[PROBE] Body starts at offset " + bodyStart);
-                                appendLog("I", "[PROBE] Body hex: " + hex(java.util.Arrays.copyOfRange(buf, bodyStart, firstRead), firstRead - bodyStart));
-                            }
+                        if (line.toLowerCase().startsWith("server:")) {
+                            appendLog("I", ">>> Server: " + line);
                         }
-
-                        // Check if MJPEG (looks for FF D8)
-                        for (int i = 0; i < firstRead - 1; i++) {
-                            if ((buf[i] & 0xFF) == 0xFF && (buf[i+1] & 0xFF) == 0xD8) {
-                                appendLog("I", "[PROBE] >>> JPEG/MJPEG detected at offset " + i + "!");
-                            }
+                        if (line.toLowerCase().startsWith("content-type:")) {
+                            appendLog("I", ">>> " + line);
                         }
+                        if (line.isEmpty()) break;
                     }
-                    s.close();
-                } else {
-                    s.close();
                 }
-            } catch (Exception e) {
-                if (s != null) try { s.close(); } catch (Exception ig) {}
-            }
+                s.close();
+            } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
         }
+
+        // Strategy 1b: Try POST requests with various content types
+        appendLog("I", "[PROBE] TCP:" + port + " 尝试POST请求...");
+        String[][] postCmds = {
+            {"/live", "application/json", "{\"CMD\":20,\"PARAM\":\"\"}"},
+            {"/live", "application/json", "{\"action\":\"start\"}"},
+            {"/live", "application/json", "{\"T\":\"live\",\"CMD\":\"VSTART\"}"},
+            {"/video", "application/json", "{\"CMD\":20}"},
+            {"/stream", "application/json", "{\"start\":true}"},
+            {"/", "application/json", "{\"CMD\":0}"},
+            {"/api/v1/start_live", "application/json", "{}"},
+            {"/live", "application/octet-stream", "D8C0D9"},  // binary handshake as POST body
+            {"/", "application/octet-stream", "D8C0D9"},
+            {"/", "text/plain", "start_video"},
+        };
+        for (String[] pc : postCmds) {
+            if (!streaming) return false;
+            Socket s = null;
+            try {
+                s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 1500);
+                s.setSoTimeout(1500);
+                OutputStream os = s.getOutputStream();
+                String body = pc[2];
+                String req = "POST " + pc[0] + " HTTP/1.1\r\nHost: " + config.ip + ":" + port + "\r\n"
+                        + "Content-Type: " + pc[1] + "\r\nContent-Length: " + body.length() + "\r\nConnection: close\r\n\r\n" + body;
+                os.write(req.getBytes("UTF-8")); os.flush();
+
+                InputStream is = s.getInputStream();
+                byte[] buf = new byte[4096];
+                int n = is.read(buf, 0, buf.length);
+                if (n > 0) {
+                    String resp = new String(buf, 0, Math.min(n, 500));
+                    String firstLine = resp.split("\n")[0];
+                    appendLog("I", "[PROBE] POST" + pc[0] + " (" + pc[1].split(";")[0] + ") => " + firstLine + " " + n + "B");
+                    if (firstLine.contains("200") || firstLine.contains("201")) {
+                        appendLog("I", ">>> POST成功! 完整响应:");
+                        String[] lines = resp.split("\r\n");
+                        for (String line : lines) {
+                            appendLog("I", "[PROBE]   " + line);
+                            if (line.isEmpty()) break;
+                        }
+                        appendLog("I", "[PROBE] hex: " + hex(buf, Math.min(n, 64)));
+                    }
+                } else {
+                    appendLog("D", "[PROBE] POST" + pc[0] + " 无响应");
+                }
+                s.close();
+            } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
+        }
+
+        // Strategy 1c: Try WebSocket upgrade
+        appendLog("I", "[PROBE] TCP:" + port + " 尝试WebSocket...");
+        for (String wsPath : new String[]{"/", "/live", "/ws", "/video", "/stream"}) {
+            if (!streaming) return false;
+            Socket s = null;
+            try {
+                s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 1000);
+                s.setSoTimeout(2000);
+                String wsKey = java.util.Base64.getEncoder().encodeToString(("m8probe" + System.currentTimeMillis()).getBytes());
+                String upgrade = "GET " + wsPath + " HTTP/1.1\r\nHost: " + config.ip + ":" + port + "\r\n"
+                        + "Upgrade: websocket\r\nConnection: Upgrade\r\n"
+                        + "Sec-WebSocket-Key: " + wsKey + "\r\n"
+                        + "Sec-WebSocket-Version: 13\r\n\r\n";
+                s.getOutputStream().write(upgrade.getBytes("UTF-8"));
+                s.getOutputStream().flush();
+
+                byte[] buf = new byte[4096];
+                int n = s.getInputStream().read(buf, 0, buf.length);
+                if (n > 0) {
+                    String resp = new String(buf, 0, Math.min(n, 500));
+                    appendLog("I", "[PROBE] WS" + wsPath + ": " + resp.split("\n")[0]);
+                    if (resp.contains("101") || resp.contains("Switching")) {
+                        appendLog("I", ">>> WebSocket升级成功! " + wsPath);
+                        // Read websocket frames
+                        s.close(); return true;
+                    }
+                }
+                s.close();
+            } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
+        }
+
+        // Strategy 1d: Try PUT, DELETE, custom methods
+        appendLog("I", "[PROBE] TCP:" + port + " 尝试其他HTTP方法...");
+        for (String method : new String[]{"POST", "PUT", "OPTIONS", "HEAD"}) {
+            if (!streaming) return false;
+            Socket s = null;
+            try {
+                s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 1000);
+                s.setSoTimeout(1500);
+                String req2 = method + " /live HTTP/1.1\r\nHost: " + config.ip + ":" + port + "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+                s.getOutputStream().write(req2.getBytes("UTF-8")); s.getOutputStream().flush();
+                byte[] buf = new byte[4096];
+                int n = s.getInputStream().read(buf, 0, buf.length);
+                if (n > 0) {
+                    String resp = new String(buf, 0, Math.min(n, 500));
+                    appendLog("I", "[PROBE] " + method + " /live => " + resp.split("\n")[0]);
+                    // Print all headers
+                    String[] lines = resp.split("\r\n");
+                    for (String line : lines) {
+                        appendLog("I", "[PROBE]   " + line);
+                        if (line.isEmpty()) break;
+                    }
+                }
+                s.close();
+            } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
+        }
+
+        // Strategy 1e: Try HTTP with binary body (handshake as HTTP body)
+        appendLog("I", "[PROBE] TCP:" + port + " 尝试HTTP+二进制体...");
+        Socket s = null;
+        try {
+            s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 2000);
+            s.setSoTimeout(3000);
+            byte[] handshakeBody = {(byte)0xD8, (byte)0xC0, (byte)0xD9};
+            String req3 = "POST / HTTP/1.1\r\nHost: " + config.ip + ":" + port + "\r\n"
+                    + "Content-Type: application/octet-stream\r\nContent-Length: 3\r\nConnection: close\r\n\r\n";
+            OutputStream os = s.getOutputStream();
+            os.write(req3.getBytes("UTF-8"));
+            os.write(handshakeBody);
+            os.flush();
+
+            // Wait for potential streaming response
+            byte[] bigBuf = new byte[32768];
+            int total = 0;
+            try {
+                while (streaming) {
+                    int n = s.getInputStream().read(bigBuf, total, bigBuf.length - total);
+                    if (n <= 0) break;
+                    total += n;
+                    if (total > 100) break; // Got enough
+                }
+            } catch (Exception e) {}
+            if (total > 0) {
+                appendLog("I", "[PROBE] HTTP+二进制 响应 " + total + "B:");
+                String head = new String(bigBuf, 0, Math.min(total, 500));
+                String[] lines = head.split("\r\n");
+                for (String line : lines) {
+                    appendLog("I", "[PROBE]   " + line);
+                    if (line.isEmpty()) break;
+                }
+                int bodyOff = findHttpBodyStart(bigBuf, total);
+                if (bodyOff > 0 && total > bodyOff) {
+                    appendLog("I", "[PROBE] Body hex: " + hex(java.util.Arrays.copyOfRange(bigBuf, bodyOff, total), Math.min(total - bodyOff, 64)));
+                }
+            }
+            s.close();
+        } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
 
         // Strategy 2: Try sending video activation JSON commands to this port
         appendLog("I", "[PROBE] TCP:" + port + " 尝试JSON激活命令...");
         String[] cmds = {
-            "{\"CMD\":0}",                     // query
-            "{\"CMD\":20,\"PARAM\":\"\"}",     // video start
+            "{\"CMD\":0}",
+            "{\"CMD\":20,\"PARAM\":\"\"}",
             "{\"T\":\"live\"}",
             "{\"action\":\"start\",\"type\":\"video\"}",
             "{\"msg\":\"video_start\"}",
         };
         for (String cmd : cmds) {
             if (!streaming) return false;
-            Socket s = null;
+            Socket s2 = null;
             try {
-                s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 1000);
-                s.setSoTimeout(1000);
-                OutputStream os = s.getOutputStream();
-                os.write((cmd + "\n").getBytes("UTF-8"));
-                os.flush();
+                s2 = new Socket(); s2.connect(new InetSocketAddress(config.ip, port), 1000);
+                s2.setSoTimeout(1000);
+                OutputStream os2 = s2.getOutputStream();
+                os2.write((cmd + "\n").getBytes("UTF-8"));
+                os2.flush();
                 appendLog("D", "[PROBE] TCP:" + port + " sent: " + cmd);
                 try {
-                    BufferedReader br = new BufferedReader(new InputStreamReader(s.getInputStream()));
-                    String resp = br.readLine();
+                    BufferedReader br2 = new BufferedReader(new InputStreamReader(s2.getInputStream()));
+                    String resp = br2.readLine();
                     if (resp != null) appendLog("I", "[PROBE] TCP:" + port + " resp: " + truncate(resp, 200));
                 } catch (Exception e) {}
-                s.close();
-            } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
+                s2.close();
+            } catch (Exception e) { if (s2 != null) try { s2.close(); } catch (Exception ig) {} }
         }
 
         // Strategy 3: Raw binary handshake on this TCP port
@@ -423,46 +536,46 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         };
         for (byte[] hs : handshakes) {
             if (!streaming) return false;
-            Socket s = null;
+            Socket s3 = null;
             try {
-                s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 1000);
-                s.setSoTimeout(2000);
-                OutputStream os = s.getOutputStream();
-                os.write(hs);
-                os.flush();
+                s3 = new Socket(); s3.connect(new InetSocketAddress(config.ip, port), 1000);
+                s3.setSoTimeout(2000);
+                OutputStream os3 = s3.getOutputStream();
+                os3.write(hs);
+                os3.flush();
                 appendLog("D", "[PROBE] TCP:" + port + " sent " + hs.length + "B: " + hex(hs, hs.length));
-                byte[] rbuf = new byte[1024];
+                byte[] rbuf3 = new byte[1024];
                 try {
-                    int n = s.getInputStream().read(rbuf, 0, rbuf.length);
+                    int n = s3.getInputStream().read(rbuf3, 0, rbuf3.length);
                     if (n > 0) {
-                        appendLog("I", "[PROBE] TCP:" + port + " GOT " + n + "B! hex: " + hex(rbuf, n));
+                        appendLog("I", "[PROBE] TCP:" + port + " GOT " + n + "B! hex: " + hex(rbuf3, n));
                         appendLog("I", "[PROBE] >>> 此端口有响应! 可能是视频端口!");
-                        s.close();
-                        return true; // Got response!
+                        s3.close();
+                        return true;
                     }
                 } catch (Exception e) {}
-                s.close();
-            } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
+                s3.close();
+            } catch (Exception e) { if (s3 != null) try { s3.close(); } catch (Exception ig) {} }
         }
 
         // Strategy 4: Connect and just wait for data (server might push)
         appendLog("I", "[PROBE] TCP:" + port + " 等待服务器推送...");
-        Socket s = null;
+        Socket s4 = null;
         try {
-            s = new Socket(); s.connect(new InetSocketAddress(config.ip, port), 2000);
-            s.setSoTimeout(3000);
+            s4 = new Socket(); s4.connect(new InetSocketAddress(config.ip, port), 2000);
+            s4.setSoTimeout(3000);
             appendLog("I", "[PROBE] TCP:" + port + " 已连接, 等待3秒...");
-            byte[] rbuf = new byte[MAX_TCP_BUF];
+            byte[] rbuf4 = new byte[MAX_TCP_BUF];
             try {
-                int n = s.getInputStream().read(rbuf, 0, rbuf.length);
+                int n = s4.getInputStream().read(rbuf4, 0, rbuf4.length);
                 if (n > 0) {
-                    appendLog("I", "[PROBE] TCP:" + port + " 推送 " + n + "B! hex: " + hex(rbuf, n));
-                    s.close();
+                    appendLog("I", "[PROBE] TCP:" + port + " 推送 " + n + "B! hex: " + hex(rbuf4, n));
+                    s4.close();
                     return true;
                 }
             } catch (Exception e) {}
-            s.close();
-        } catch (Exception e) { if (s != null) try { s.close(); } catch (Exception ig) {} }
+            s4.close();
+        } catch (Exception e) { if (s4 != null) try { s4.close(); } catch (Exception ig) {} }
 
         return false;
     }
