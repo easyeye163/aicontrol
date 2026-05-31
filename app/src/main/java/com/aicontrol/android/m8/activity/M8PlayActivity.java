@@ -1,6 +1,8 @@
 package com.aicontrol.android.m8.activity;
 
 import android.Manifest;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
@@ -196,6 +198,12 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
             startActivity(new Intent(this, M8ConfigActivity.class));
         });
 
+        TextView btnExportLog = findViewById(R.id.btnExportLog);
+        btnExportLog.setOnClickListener(v -> exportLogToClipboard());
+
+        TextView btnCopyLog = findViewById(R.id.btnCopyLog);
+        btnCopyLog.setOnClickListener(v -> copyLogToClipboard());
+
         TextView btnClearLog = findViewById(R.id.btnClearLog);
         btnClearLog.setOnClickListener(v -> {
             logBuilder.setLength(0);
@@ -275,7 +283,40 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     }
 
     // =========================================================================
-    // Debug Log
+    // Export & Copy Log
+    // =========================================================================
+
+    private void exportLogToClipboard() {
+        String logText = logBuilder.toString();
+        if (logText.isEmpty()) {
+            Toast.makeText(this, "日志为空", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        // Build export with header
+        String export = "=== AiControl M8 Debug Log ===\n"
+                + "Time: " + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(new Date()) + "\n"
+                + "Config: IP=" + config.ip + " UDP=" + config.udpPort + " TCP=" + config.tcpPort + "\n"
+                + "================================\n"
+                + logText;
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clip = ClipData.newPlainText("M8_DebugLog", export);
+        clipboard.setPrimaryClip(clip);
+        appendLog("I", "日志已导出到剪贴板 (" + export.length() + "字符)");
+        Toast.makeText(this, "日志已导出到剪贴板", Toast.LENGTH_SHORT).show();
+    }
+
+    private void copyLogToClipboard() {
+        String logText = logBuilder.toString();
+        if (logText.isEmpty()) {
+            Toast.makeText(this, "日志为空", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+        ClipData clip = ClipData.newPlainText("M8_Log", logText);
+        clipboard.setPrimaryClip(clip);
+        Toast.makeText(this, "已复制到剪贴板", Toast.LENGTH_SHORT).show();
+    }
+
     // =========================================================================
 
     private void appendLog(String level, String msg) {

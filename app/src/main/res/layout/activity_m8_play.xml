@@ -220,6 +220,26 @@
                 android:textSize="10sp" />
 
             <TextView
+                android:id="@+id/btnExportLog"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="2dp"
+                android:text="导出"
+                android:textColor="#64B5F6"
+                android:textSize="11sp" />
+
+            <TextView
+                android:id="@+id/btnCopyLog"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="2dp"
+                android:text="复制"
+                android:textColor="#64B5F6"
+                android:textSize="11sp" />
+
+            <TextView
                 android:id="@+id/btnClearLog"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -248,7 +268,9 @@
                 android:textColor="#CCCCCC"
                 android:textSize="9sp"
                 android:fontFamily="monospace"
-                android:lineSpacingExtra="1dp" />
+                android:lineSpacingExtra="1dp"
+                android:textIsSelectable="true"
+                android:longClickable="true" />
         </ScrollView>
     </LinearLayout>
 
