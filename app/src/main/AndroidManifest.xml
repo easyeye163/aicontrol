@@ -291,6 +291,13 @@
             android:name=".aircam.view.PrivacyPolicyActivity"
             android:theme="@style/Theme.AiControl" />
 
+        <!-- H8 Drone Video Stream (Reverse-Engineered Protocol) -->
+        <activity
+            android:name=".aircam.h8.H8PlayActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:screenOrientation="landscape"
+            android:theme="@style/Theme.AiControl" />
+
     </application>
 
 </manifest>

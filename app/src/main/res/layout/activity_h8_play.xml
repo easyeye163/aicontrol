@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#000000"
+    android:keepScreenOn="true">
+
+    <!-- 视频画面 (SurfaceViews) -->
+    <com.aicontrol.android.aircam.view.SurfaceViews
+        android:id="@+id/h8_surface_video"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_centerInParent="true" />
+
+    <!-- 顶部状态栏 -->
+    <LinearLayout
+        android:id="@+id/h8_top_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:background="#80000000"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <TextView
+            android:id="@+id/h8_tv_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="H8 Drone Stream"
+            android:textColor="#FFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/h8_tv_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="未连接"
+            android:textColor="#AAAAAA"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <!-- 底部控制栏 -->
+    <LinearLayout
+        android:id="@+id/h8_bottom_bar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:background="#80000000"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:padding="12dp">
+
+        <!-- 连接按钮 -->
+        <Button
+            android:id="@+id/h8_btn_connect"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_margin="4dp"
+            android:layout_weight="1"
+            android:background="@android:color/holo_green_dark"
+            android:text="连接"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+
+        <!-- 开始接收按钮 -->
+        <Button
+            android:id="@+id/h8_btn_start"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_margin="4dp"
+            android:layout_weight="1"
+            android:background="@android:color/holo_blue_dark"
+            android:text="开始"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+
+        <!-- 停止按钮 -->
+        <Button
+            android:id="@+id/h8_btn_stop"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_margin="4dp"
+            android:layout_weight="1"
+            android:background="@android:color/holo_red_dark"
+            android:text="停止"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <!-- 日志输出区域 (默认隐藏，可通过按钮切换显示) -->
+    <ScrollView
+        android:id="@+id/h8_log_container"
+        android:layout_width="match_parent"
+        android:layout_height="120dp"
+        android:layout_above="@id/h8_bottom_bar"
+        android:background="#CC000000"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/h8_tv_log"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="8dp"
+            android:textColor="#00FF00"
+            android:textSize="10sp"
+            android:fontFamily="monospace"
+            android:text="" />
+    </ScrollView>
+
+</RelativeLayout>
