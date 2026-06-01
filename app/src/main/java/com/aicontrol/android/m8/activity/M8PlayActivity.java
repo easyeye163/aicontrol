@@ -37,9 +37,12 @@ import com.aicontrol.android.m8.utils.M8Config;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.DataInputStream;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
@@ -333,132 +336,115 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
      * - Sends JSON queries for firmware version, device info
      * - Sends video start command {"CMD":20} before UDP handshake
      */
+    /**
+     * v0.0.96: Connect TCP:4646 using H8 native protocol (aligned with decompiled TcpManager)
+     * 
+     * Key changes from v0.0.94:
+     * - Use DataInputStream.read(byte[]) + ISO-8859-1 (like original H8)
+     * - Wait for server banner (CMD:0) proactively pushed
+     * - NO manual CMD:0 query, NO video activation commands
+     * - Banner received → mark success → UDP will start automatically
+     */
     private boolean connectAndQuery4646() {
         Socket s = null;
         try {
             s = new Socket();
             s.connect(new InetSocketAddress(config.ip, config.tcpPort), 3000);
             s.setSoTimeout(3000);
-            s.setKeepAlive(true);
             s.setTcpNoDelay(true);
             appendLog("I", "[4646] 已连接 TCP:" + config.tcpPort);
 
-            OutputStream os = s.getOutputStream();
-            InputStream is = s.getInputStream();
+            java.io.OutputStream os = s.getOutputStream();
+            java.io.InputStream is = s.getInputStream();
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(os, "UTF-8"));
+            DataInputStream dis = new DataInputStream(is);
 
-            // Step 1a: Wait for initial server push (some firmware sends version info immediately)
-            appendLog("I", "[4646] 等待初始推送...");
-            String initMsg = null;
+            // Step 1: Wait for server banner push (CMD:0 with firmware info)
+            // Original H8: server sends {"CMD":0,"RESULT":0,"PARAM":"{\"FirmWare\":...}"}
+            // immediately upon connection. Client does NOT request it.
+            appendLog("I", "[4646] 等待服务器推送 banner...");
+            byte[] recvBuf = new byte[1024];
+            boolean bannerReceived = false;
+            
             try {
-                BufferedReader br = new BufferedReader(new InputStreamReader(is));
-                s.setSoTimeout(3000);
-                initMsg = br.readLine();
-                if (initMsg != null) {
-                    appendLog("I", "[4646] 服务器推送: " + truncate(initMsg, 300));
+                s.setSoTimeout(5000);
+                int bytesRead = dis.read(recvBuf);
+                if (bytesRead > 0) {
+                    String data = new String(recvBuf, 0, bytesRead, "ISO-8859-1").trim();
+                    
+                    // Log hex
+                    StringBuilder hexStr = new StringBuilder();
+                    for (int i = 0; i < Math.min(bytesRead, 32); i++) {
+                        hexStr.append(String.format("%02X ", recvBuf[i] & 0xFF));
+                    }
+                    appendLog("D", "[4646] recv " + bytesRead + "B hex: " + hexStr.toString());
+                    
+                    appendLog("I", "[4646] 服务器推送: " + truncate(data, 500));
+                    tcp4646Responses.add(data);
+                    
                     try {
-                        JSONObject j = new JSONObject(initMsg);
-                        appendLog("I", "[4646] JSON字段: " + j.keys().toString());
+                        JSONObject j = new JSONObject(data);
+                        int cmd = j.optInt("CMD", -1);
+                        int result = j.optInt("RESULT", -1);
+                        String param = j.optString("PARAM", "");
+                        appendLog("I", "[4646] CMD=" + cmd + " RESULT=" + result + " PARAM=" + truncate(param, 300));
+                        
+                        if (cmd == 0 && result == 0) {
+                            bannerReceived = true;
+                            appendLog("I", "[4646] ★ 收到固件 banner!");
+                            
+                            // Parse firmware info
+                            try {
+                                JSONObject paramJson = new JSONObject(param);
+                                String firmware = paramJson.optString("FirmWare", "");
+                                String platform = paramJson.optString("platform", "");
+                                appendLog("I", "[4646] 固件: " + firmware + " 平台: " + platform);
+                            } catch (Exception ignored) {}
+                        }
                     } catch (Exception ignored) {}
                 }
             } catch (SocketTimeoutException e) {
-                appendLog("I", "[4646] 无初始推送 (正常)");
+                appendLog("W", "[4646] 等待banner超时 (5s)");
             }
 
-            // Step 1b: Send query commands (sequence from H8 APK)
-            // H8 sends: {"CMD":0,"PARAM":""} to get device info
-            String[] queries = {
-                "{\"CMD\":0,\"PARAM\":\"\"}",
-                "{\"CMD\":0}",
-                "{\"T\":\"GFW\"}",          // Get firmware
-                "{\"T\":\"GVER\"}",          // Get version
-                "{\"T\":\"GINFO\"}",         // Get device info
-            };
-            
-            for (String q : queries) {
-                if (!streaming) return false;
+            if (!bannerReceived) {
+                appendLog("W", "[4646] 未收到banner, 尝试发送查询...");
+                // Fallback: try sending CMD:0 query like old version
                 try {
-                    os.write((q + "\n").getBytes("UTF-8"));
-                    os.flush();
+                    String q = "{\"CMD\":0,\"PARAM\":\"\"}";
+                    writer.write(q.replace("\n", " ") + "\n");
+                    writer.flush();
+                    Thread.sleep(50);
                     appendLog("D", "[4646] 发送: " + q);
-                    s.setSoTimeout(2000);
-                    BufferedReader br = new BufferedReader(new InputStreamReader(is));
-                    String resp = br.readLine();
-                    if (resp != null) {
-                        appendLog("I", "[4646] 响应: " + truncate(resp, 300));
-                        tcp4646Responses.add(resp);
-                        try {
-                            JSONObject j = new JSONObject(resp);
-                            appendLog("I", "[4646] JSON: " + j.toString());
-                        } catch (Exception ignored) {}
-                    } else {
-                        appendLog("D", "[4646] 无响应");
+                    
+                    s.setSoTimeout(3000);
+                    int bytesRead = dis.read(recvBuf);
+                    if (bytesRead > 0) {
+                        String data = new String(recvBuf, 0, bytesRead, "ISO-8859-1").trim();
+                        appendLog("I", "[4646] 查询响应: " + truncate(data, 500));
+                        tcp4646Responses.add(data);
+                        bannerReceived = true;
                     }
-                    Thread.sleep(200);
-                } catch (SocketTimeoutException e) {
-                    appendLog("D", "[4646] 查询超时");
                 } catch (Exception e) {
-                    appendLog("D", "[4646] 查询错误: " + e.getMessage());
+                    appendLog("W", "[4646] 查询也失败: " + e.getMessage());
                 }
             }
 
-            // Step 1c: Send VIDEO START command (critical - this activates UDP:1563)
-            appendLog("I", "[4646] >>> 发送视频激活命令 <<<");
-            String[] videoCmds = {
-                "{\"CMD\":20,\"PARAM\":\"\"}",          // Video start (H8 native)
-                "{\"CMD\":20}",
-                "{\"action\":\"start\",\"type\":\"video\"}",
-                "{\"T\":\"VSTART\"}",
-                "{\"msg\":\"video_start\"}",
-                "{\"CMD\":20,\"PARAM\":\"start\"}",
-            };
-
-            boolean activated = false;
-            for (String vc : videoCmds) {
-                if (!streaming) return false;
-                try {
-                    os.write((vc + "\n").getBytes("UTF-8"));
-                    os.flush();
-                    appendLog("I", "[4646] 激活: " + vc);
-                    s.setSoTimeout(2000);
-                    BufferedReader br = new BufferedReader(new InputStreamReader(is));
-                    String resp = br.readLine();
-                    if (resp != null) {
-                        appendLog("I", "[4646] 激活响应: " + truncate(resp, 300));
-                        tcp4646Responses.add(resp);
-                        activated = true;
-                        // Don't break - send all commands to maximize chances
-                    }
-                    Thread.sleep(300);
-                } catch (SocketTimeoutException e) {
-                    appendLog("D", "[4646] 激活超时 (继续尝试下一个)");
-                } catch (Exception e) {
-                    appendLog("D", "[4646] 激活错误: " + e.getMessage());
-                }
-            }
-
-            if (!activated) {
-                appendLog("W", "[4646] 所有激活命令均无响应, UDP可能未开放");
-            } else {
-                appendLog("I", "[4646] 至少一个激活命令有响应");
-            }
-
-            // Wait a bit for firmware to open UDP port
-            appendLog("I", "[4646] 等待2秒让固件开启UDP端口...");
-            Thread.sleep(2000);
-
-            // Keep reading in background
+            // Step 2: Keep TCP alive for background reading (like original H8)
+            // Original H8 does NOT send any video activation commands.
+            // It just reads server responses in background.
             s.setSoTimeout(100);
             tcpSocket = s;
             final Socket tcpSock = s;
             tcpThread = new Thread(() -> {
                 try {
-                    byte[] buf2 = new byte[4096];
-                    InputStream is2 = tcpSock.getInputStream();
+                    byte[] buf2 = new byte[1024];
+                    DataInputStream dis2 = new DataInputStream(tcpSock.getInputStream());
                     while (streaming) {
                         try {
-                            int nr = is2.read(buf2, 0, buf2.length);
+                            int nr = dis2.read(buf2);
                             if (nr <= 0) break;
-                            String msg = new String(buf2, 0, Math.min(nr, 500)).trim();
+                            String msg = new String(buf2, 0, nr, "ISO-8859-1").trim();
                             if (!msg.isEmpty()) {
                                 appendLog("D", "[4646] " + truncate(msg, 300));
                                 tcp4646Responses.add(msg);
@@ -473,7 +459,7 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
             }, "TCP4646");
             tcpThread.start();
 
-            return true;
+            return bannerReceived;
 
         } catch (Exception e) {
             appendLog("W", "[4646] 连接失败: " + e.getMessage());
@@ -500,8 +486,11 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         try {
             ds = new DatagramSocket(null);
             ds.setReuseAddress(true);
-            ds.bind(new InetSocketAddress(0));
-            ds.setSoTimeout(5000);  // Longer timeout first time
+            ds.setBroadcast(true);
+            // v0.0.96: bind to port 1563 like original H8 UdpThread
+            int bindPort = (port == config.udpPort) ? config.udpPort : port;
+            ds.bind(new InetSocketAddress(bindPort));
+            ds.setSoTimeout(5000);
             ds.connect(new InetSocketAddress(config.ip, port));
             udpSocket = ds;
             appendLog("I", "[UDP] :" + port + " 本地端口=" + ds.getLocalPort());
@@ -801,37 +790,21 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         tvStatus.setText("连接中...");
         if (btnConnect != null) btnConnect.setVisibility(View.GONE);
 
-        appendLog("I", "========== v0.0.94 H8协议模式 ==========");
+        appendLog("I", "========== v0.0.96 H8协议模式 ==========");
         logNetworkDiagnostics();
 
         streamThread = new Thread(() -> {
             try {
-                // Phase 1: Quick TCP port scan
-                appendLog("I", "[PHASE1] TCP端口扫描...");
-                int[] tcpPorts = scanTcpPorts();
-
-                // Phase 2: Connect TCP:4646 + query + activate video
-                appendLog("I", "[PHASE2] 连接TCP:4646 → 查询 → 激活视频");
-                boolean tcp4646Ok = false;
-                for (int p : tcpPorts) {
-                    if (p == 4646 || p == config.tcpPort) {
-                        // Try 4646 first, then configured port
-                        if (p != 4646) continue;
-                        tcp4646Ok = connectAndQuery4646();
-                        if (tcp4646Ok) break;
-                    }
-                }
-                if (!tcp4646Ok && config.tcpPort != 4646) {
-                    // Try configured TCP port
-                    appendLog("I", "[PHASE2] 4646不可用, 尝试TCP:" + config.tcpPort);
-                    tcp4646Ok = connectAndQuery4646();
-                }
+                // Phase 1: Connect TCP:4646 (direct, no port scan)
+                // v0.0.96: aligned with original H8 - connect directly, wait for banner
+                appendLog("I", "[PHASE1] 直接连接TCP:4646...");
+                boolean tcp4646Ok = connectAndQuery4646();
 
                 if (!tcp4646Ok) {
-                    appendLog("W", "[PHASE2] TCP控制连接失败, 仍然尝试UDP...");
+                    appendLog("W", "[PHASE1] TCP连接/banner失败, 仍然尝试UDP...");
                 }
 
-                Thread.sleep(500);
+                Thread.sleep(300);
 
                 // Phase 3: Try UDP video (primary - H8 native protocol)
                 appendLog("I", "[PHASE3] UDP:" + config.udpPort + " H264/RTP视频流");
@@ -849,10 +822,11 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                     }
                 }
 
-                // Phase 5: If all UDP failed, try TCP video on discovered ports
+                // Phase 5: If all UDP failed, try TCP video on known ports
                 if (!videoOk) {
                     appendLog("I", "[PHASE5] UDP全部失败, 尝试TCP视频流...");
-                    for (int tp : tcpPorts) {
+                    int[] fallbackTcpPorts = {7070, 8080, 8554};
+                    for (int tp : fallbackTcpPorts) {
                         if (!streaming) break;
                         if (tp == config.tcpPort) continue; // Already using for control
                         appendLog("I", "[PHASE5] 尝试TCP视频:" + tp + "...");
