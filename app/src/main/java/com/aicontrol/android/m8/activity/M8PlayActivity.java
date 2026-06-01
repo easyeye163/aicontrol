@@ -337,13 +337,14 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
      * - Sends video start command {"CMD":20} before UDP handshake
      */
     /**
-     * v0.0.96: Connect TCP:4646 using H8 native protocol (aligned with decompiled TcpManager)
+     * v0.0.97: Connect TCP:4646 using H8 native protocol
      * 
-     * Key changes from v0.0.94:
-     * - Use DataInputStream.read(byte[]) + ISO-8859-1 (like original H8)
-     * - Wait for server banner (CMD:0) proactively pushed
-     * - NO manual CMD:0 query, NO video activation commands
-     * - Banner received → mark success → UDP will start automatically
+     * Key findings from H8 protocol analysis:
+     * - CMD:2 = VID_ENC_PREVIEW_ON (开启预览编码)
+     * - CMD:94 = BIND_APP_UDP (绑定APP的UDP端口)
+     * - CMD:20 = HUE_SET (设置色相) — NOT video start!
+     * - After banner, must send VID_ENC_PREVIEW_ON to open UDP:1563
+     * - Binary responses from server logged as hex dump
      */
     private boolean connectAndQuery4646() {
         Socket s = null;
@@ -430,9 +431,50 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                 }
             }
 
-            // Step 2: Keep TCP alive for background reading (like original H8)
-            // Original H8 does NOT send any video activation commands.
-            // It just reads server responses in background.
+            // Step 2: v0.0.97 — Send video preview activation command
+            // CMD:2 = VID_ENC_PREVIEW_ON (开启预览编码/视频预览)
+            // CMD:94 = BIND_APP_UDP (绑定APP的UDP端口)
+            // These are the correct commands that tell the drone to open UDP:1563
+            if (bannerReceived) {
+                appendLog("I", "[4646] 发送视频激活命令...");
+                try {
+                    // CMD:94 — 告诉无人机APP的UDP端口
+                    String bindCmd = "{\"CMD\":94,\"PARAM\":\"1563\"}";
+                    writer.write(bindCmd + "\n");
+                    writer.flush();
+                    Thread.sleep(100);
+                    appendLog("D", "[4646] 发送: " + bindCmd);
+
+                    // CMD:2 — 开启预览编码
+                    String previewCmd = "{\"CMD\":2,\"PARAM\":\"\"}";
+                    writer.write(previewCmd + "\n");
+                    writer.flush();
+                    Thread.sleep(100);
+                    appendLog("D", "[4646] 发送: " + previewCmd);
+
+                    // Wait for response to activation commands
+                    s.setSoTimeout(2000);
+                    try {
+                        int actBytes = dis.read(recvBuf);
+                        if (actBytes > 0) {
+                            String actData = new String(recvBuf, 0, actBytes, "ISO-8859-1").trim();
+                            StringBuilder actHex = new StringBuilder();
+                            for (int i = 0; i < Math.min(actBytes, 32); i++) {
+                                actHex.append(String.format("%02X ", recvBuf[i] & 0xFF));
+                            }
+                            appendLog("D", "[4646] 激活响应 " + actBytes + "B hex: " + actHex.toString());
+                            appendLog("I", "[4646] 激活响应: " + truncate(actData, 300));
+                            tcp4646Responses.add(actData);
+                        }
+                    } catch (SocketTimeoutException e) {
+                        appendLog("I", "[4646] 激活命令无响应(可能成功,UDP端口可能已开放)");
+                    }
+                } catch (Exception e) {
+                    appendLog("W", "[4646] 发送激活命令失败: " + e.getMessage());
+                }
+            }
+
+            // Step 3: Keep TCP alive for background reading
             s.setSoTimeout(100);
             tcpSocket = s;
             final Socket tcpSock = s;
@@ -444,9 +486,15 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                         try {
                             int nr = dis2.read(buf2);
                             if (nr <= 0) break;
+                            // Always log hex dump for binary analysis
+                            StringBuilder hexStr = new StringBuilder();
+                            for (int i = 0; i < Math.min(nr, 64); i++) {
+                                hexStr.append(String.format("%02X ", buf2[i] & 0xFF));
+                            }
                             String msg = new String(buf2, 0, nr, "ISO-8859-1").trim();
+                            appendLog("D", "[4646] " + nr + "B hex: " + hexStr.toString());
                             if (!msg.isEmpty()) {
-                                appendLog("D", "[4646] " + truncate(msg, 300));
+                                appendLog("D", "[4646] text: " + truncate(msg, 300));
                                 tcp4646Responses.add(msg);
                             }
                         } catch (SocketTimeoutException e) {
@@ -487,11 +535,12 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
             ds = new DatagramSocket(null);
             ds.setReuseAddress(true);
             ds.setBroadcast(true);
-            // v0.0.96: bind to port 1563 like original H8 UdpThread
-            int bindPort = (port == config.udpPort) ? config.udpPort : port;
-            ds.bind(new InetSocketAddress(bindPort));
+            // v0.0.97: Use random local port (don't bind to remote port 1563)
+            // The drone sends TO our port, we send FROM random port TO drone's port
+            ds.bind(new InetSocketAddress(0));  // OS assigns random local port
             ds.setSoTimeout(5000);
             ds.connect(new InetSocketAddress(config.ip, port));
+            ds.setReceiveBufferSize(102400);  // 100KB buffer for video
             udpSocket = ds;
             appendLog("I", "[UDP] :" + port + " 本地端口=" + ds.getLocalPort());
 
@@ -614,10 +663,12 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
     private void resendTcpActivation() {
         try {
             if (tcpSocket != null && tcpSocket.isConnected() && !tcpSocket.isClosed()) {
+                // v0.0.97: Use correct video activation commands
+                // CMD:2 = VID_ENC_PREVIEW_ON, CMD:94 = BIND_APP_UDP
                 String[] cmds = {
-                    "{\"CMD\":20,\"PARAM\":\"\"}",
-                    "{\"CMD\":20}",
-                    "{\"T\":\"VSTART\"}",
+                    "{\"CMD\":94,\"PARAM\":\"1563\"}",
+                    "{\"CMD\":2,\"PARAM\":\"\"}",
+                    "{\"CMD\":2}",
                 };
                 for (String cmd : cmds) {
                     try {
@@ -630,23 +681,6 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                         break;
                     }
                     Thread.sleep(200);
-                }
-            } else {
-                appendLog("D", "[4646-RETRY] TCP未连接, 新建连接重试...");
-                Socket s2 = null;
-                try {
-                    s2 = new Socket();
-                    s2.connect(new InetSocketAddress(config.ip, config.tcpPort), 2000);
-                    s2.setSoTimeout(1000);
-                    OutputStream os = s2.getOutputStream();
-                    os.write(("{\"CMD\":20,\"PARAM\":\"\"}\n").getBytes("UTF-8"));
-                    os.flush();
-                    BufferedReader br = new BufferedReader(new InputStreamReader(s2.getInputStream()));
-                    String r = br.readLine();
-                    if (r != null) appendLog("I", "[4646-RETRY] 响应: " + truncate(r, 200));
-                    s2.close();
-                } catch (Exception e) {
-                    if (s2 != null) try { s2.close(); } catch (Exception ig) {}
                 }
             }
         } catch (Exception e) {
@@ -790,13 +824,13 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         tvStatus.setText("连接中...");
         if (btnConnect != null) btnConnect.setVisibility(View.GONE);
 
-        appendLog("I", "========== v0.0.96 H8协议模式 ==========");
+        appendLog("I", "========== v0.0.97 H8协议模式 ==========");
         logNetworkDiagnostics();
 
         streamThread = new Thread(() -> {
             try {
                 // Phase 1: Connect TCP:4646 (direct, no port scan)
-                // v0.0.96: aligned with original H8 - connect directly, wait for banner
+                // v0.0.97: connect → banner → CMD:94(bind UDP) → CMD:2(preview on) → UDP
                 appendLog("I", "[PHASE1] 直接连接TCP:4646...");
                 boolean tcp4646Ok = connectAndQuery4646();
 
@@ -804,7 +838,8 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                     appendLog("W", "[PHASE1] TCP连接/banner失败, 仍然尝试UDP...");
                 }
 
-                Thread.sleep(300);
+                // v0.0.97: Give drone time to open UDP port after activation commands
+                Thread.sleep(1500);
 
                 // Phase 3: Try UDP video (primary - H8 native protocol)
                 appendLog("I", "[PHASE3] UDP:" + config.udpPort + " H264/RTP视频流");
