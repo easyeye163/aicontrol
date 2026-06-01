@@ -337,14 +337,13 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
      * - Sends video start command {"CMD":20} before UDP handshake
      */
     /**
-     * v0.0.97: Connect TCP:4646 using H8 native protocol
+     * v0.0.98: Connect TCP:4646 using H8 native protocol
      * 
-     * Key findings from H8 protocol analysis:
-     * - CMD:2 = VID_ENC_PREVIEW_ON (开启预览编码)
-     * - CMD:94 = BIND_APP_UDP (绑定APP的UDP端口)
-     * - CMD:20 = HUE_SET (设置色相) — NOT video start!
-     * - After banner, must send VID_ENC_PREVIEW_ON to open UDP:1563
-     * - Binary responses from server logged as hex dump
+     * Key findings:
+     * - CMD:2 → server responds {CMD:2, PARAM:-1, RESULT:0} (accepted but PARAM=-1)
+     * - ALL UDP ports ICMP unreachable — drone doesn't open UDP at all
+     * - TCP:7070 is also open — may carry video data
+     * - Need to try: CMD with individual reads + TCP:7070 video
      */
     private boolean connectAndQuery4646() {
         Socket s = null;
@@ -431,43 +430,72 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
                 }
             }
 
-            // Step 2: v0.0.97 — Send video preview activation command
-            // CMD:2 = VID_ENC_PREVIEW_ON (开启预览编码/视频预览)
-            // CMD:94 = BIND_APP_UDP (绑定APP的UDP端口)
-            // These are the correct commands that tell the drone to open UDP:1563
+            // Step 2: v0.0.98 — Send video commands ONE BY ONE with individual responses
             if (bannerReceived) {
-                appendLog("I", "[4646] 发送视频激活命令...");
+                appendLog("I", "[4646] 发送视频激活命令序列...");
                 try {
-                    // CMD:94 — 告诉无人机APP的UDP端口
-                    String bindCmd = "{\"CMD\":94,\"PARAM\":\"1563\"}";
-                    writer.write(bindCmd + "\n");
-                    writer.flush();
-                    Thread.sleep(100);
-                    appendLog("D", "[4646] 发送: " + bindCmd);
-
-                    // CMD:2 — 开启预览编码
-                    String previewCmd = "{\"CMD\":2,\"PARAM\":\"\"}";
-                    writer.write(previewCmd + "\n");
-                    writer.flush();
-                    Thread.sleep(100);
-                    appendLog("D", "[4646] 发送: " + previewCmd);
-
-                    // Wait for response to activation commands
-                    s.setSoTimeout(2000);
-                    try {
-                        int actBytes = dis.read(recvBuf);
-                        if (actBytes > 0) {
-                            String actData = new String(recvBuf, 0, actBytes, "ISO-8859-1").trim();
-                            StringBuilder actHex = new StringBuilder();
-                            for (int i = 0; i < Math.min(actBytes, 32); i++) {
-                                actHex.append(String.format("%02X ", recvBuf[i] & 0xFF));
+                    // Send each command and read individual response
+                    String[] cmds = {
+                        "{\"CMD\":94,\"PARAM\":\"1563\"}",       // BIND_APP_UDP
+                        "{\"CMD\":2,\"PARAM\":\"\"}",          // VID_ENC_PREVIEW_ON (empty param)
+                        "{\"CMD\":2,\"PARAM\":\"1\"}",          // VID_ENC_PREVIEW_ON (param=1)
+                        "{\"CMD\":2,\"PARAM\":\"on\"}",        // VID_ENC_PREVIEW_ON (param=on)
+                        "{\"CMD\":4,\"PARAM\":\"\"}",          // VID_ENC_START (start recording)
+                        "{\"CMD\":116,\"PARAM\":\"\"}",        // CMD_TCP_CONNECTED
+                    };
+                    
+                    for (String cmd : cmds) {
+                        writer.write(cmd + "\n");
+                        writer.flush();
+                        appendLog("D", "[4646] 发送: " + cmd);
+                        
+                        // Wait for individual response
+                        s.setSoTimeout(1500);
+                        try {
+                            int rb = dis.read(recvBuf);
+                            if (rb > 0) {
+                                StringBuilder hx = new StringBuilder();
+                                for (int i = 0; i < Math.min(rb, 32); i++) {
+                                    hx.append(String.format("%02X ", recvBuf[i] & 0xFF));
+                                }
+                                String txt = new String(recvBuf, 0, rb, "ISO-8859-1").trim();
+                                appendLog("D", "[4646] " + rb + "B hex: " + hx.toString());
+                                if (!txt.isEmpty()) {
+                                    appendLog("I", "[4646] 响应: " + truncate(txt, 300));
+                                }
                             }
-                            appendLog("D", "[4646] 激活响应 " + actBytes + "B hex: " + actHex.toString());
-                            appendLog("I", "[4646] 激活响应: " + truncate(actData, 300));
-                            tcp4646Responses.add(actData);
+                        } catch (SocketTimeoutException e) {
+                            appendLog("I", "[4646] 无响应 (1500ms超时)");
                         }
-                    } catch (SocketTimeoutException e) {
-                        appendLog("I", "[4646] 激活命令无响应(可能成功,UDP端口可能已开放)");
+                        Thread.sleep(200);
+                    }
+                    
+                    // Also try raw binary commands (some drones use binary not JSON)
+                    appendLog("I", "[4646] 尝试二进制命令...");
+                    byte[][] binCmds = {
+                        {(byte)0xD8, (byte)0xC0, (byte)0xD9},  // UDP handshake on TCP?
+                        {0x01, 0x00, 0x00, 0x00},               // Simple ping
+                        {0x02, 0x00, 0x00, 0x00},               // CMD:2 binary?
+                    };
+                    for (byte[] bc : binCmds) {
+                        os.write(bc);
+                        os.flush();
+                        StringBuilder hx = new StringBuilder();
+                        for (byte b : bc) hx.append(String.format("%02X ", b & 0xFF));
+                        appendLog("D", "[4646] 发送二进制: " + hx.toString().trim());
+                        
+                        s.setSoTimeout(1000);
+                        try {
+                            int rb = dis.read(recvBuf);
+                            if (rb > 0) {
+                                StringBuilder hx2 = new StringBuilder();
+                                for (int i = 0; i < Math.min(rb, 64); i++) {
+                                    hx2.append(String.format("%02X ", recvBuf[i] & 0xFF));
+                                }
+                                appendLog("D", "[4646] 二进制响应 " + rb + "B: " + hx2.toString());
+                            }
+                        } catch (SocketTimeoutException ignored) {}
+                        Thread.sleep(200);
                     }
                 } catch (Exception e) {
                     appendLog("W", "[4646] 发送激活命令失败: " + e.getMessage());
@@ -824,59 +852,39 @@ public class M8PlayActivity extends com.aicontrol.android.base.BaseActivity {
         tvStatus.setText("连接中...");
         if (btnConnect != null) btnConnect.setVisibility(View.GONE);
 
-        appendLog("I", "========== v0.0.97 H8协议模式 ==========");
+        appendLog("I", "========== v0.0.98 H8协议模式 ==========");
         logNetworkDiagnostics();
 
         streamThread = new Thread(() -> {
             try {
                 // Phase 1: Connect TCP:4646 (direct, no port scan)
-                // v0.0.97: connect → banner → CMD:94(bind UDP) → CMD:2(preview on) → UDP
+                // v0.0.98: connect → banner → try many CMD sequences + binary
                 appendLog("I", "[PHASE1] 直接连接TCP:4646...");
                 boolean tcp4646Ok = connectAndQuery4646();
 
                 if (!tcp4646Ok) {
-                    appendLog("W", "[PHASE1] TCP连接/banner失败, 仍然尝试UDP...");
+                    appendLog("W", "[PHASE1] TCP连接/banner失败, 仍然尝试...");
                 }
 
-                // v0.0.97: Give drone time to open UDP port after activation commands
-                Thread.sleep(1500);
+                // v0.0.98: Try TCP:7070 FIRST (before UDP, since UDP ports are all closed)
+                appendLog("I", "[PHASE2] TCP:7070 视频流探测...");
+                boolean videoOk = tryTcpVideoStream(7070);
 
-                // Phase 3: Try UDP video (primary - H8 native protocol)
-                appendLog("I", "[PHASE3] UDP:" + config.udpPort + " H264/RTP视频流");
-                boolean videoOk = tryUdpVideoStream(config.udpPort);
-
-                // Phase 4: If UDP failed, scan more UDP ports
-                if (!videoOk) {
-                    appendLog("I", "[PHASE4] UDP:" + config.udpPort + " 失败, 扫描其他UDP端口...");
-                    int[] altUdpPorts = {1563, 8554, 554, 5000, 5004, 5001, 1234, 19798, 2228, 6666};
-                    for (int up : altUdpPorts) {
-                        if (up == config.udpPort || !streaming) continue;
-                        appendLog("I", "[PHASE4] 尝试UDP:" + up + "...");
-                        videoOk = tryUdpVideoStream(up);
-                        if (videoOk) break;
-                    }
+                if (videoOk) {
+                    appendLog("I", ">>> TCP:7070 视频连接成功!");
                 }
 
-                // Phase 5: If all UDP failed, try TCP video on known ports
+                // Phase 3: Try UDP:1563 (only once, not exhaustive)
                 if (!videoOk) {
-                    appendLog("I", "[PHASE5] UDP全部失败, 尝试TCP视频流...");
-                    int[] fallbackTcpPorts = {7070, 8080, 8554};
-                    for (int tp : fallbackTcpPorts) {
-                        if (!streaming) break;
-                        if (tp == config.tcpPort) continue; // Already using for control
-                        appendLog("I", "[PHASE5] 尝试TCP视频:" + tp + "...");
-                        videoOk = tryTcpVideoStream(tp);
-                        if (videoOk) {
-                            appendLog("I", ">>> TCP视频连接! port=" + tp);
-                            break;
-                        }
-                    }
+                    Thread.sleep(500);
+                    appendLog("I", "[PHASE3] UDP:" + config.udpPort + " H264/RTP视频流");
+                    videoOk = tryUdpVideoStream(config.udpPort);
                 }
 
                 if (!videoOk && streaming) {
                     appendLog("E", "===== 未建立视频连接 =====");
                     appendLog("I", "排查建议:");
-                    appendLog("I", "1. 确认无人机已开机并连上M8_xxx WiFi");
+                    appendLog("I", "1. 确认无人机已开机并连上WiFi");
                     appendLog("I", "2. 确认原厂HFun App可以正常看视频");
                     appendLog("I", "3. 在无人机热点下用tcpdump抓包验证端口");
                     handler.post(() -> {
