@@ -53,12 +53,14 @@ public final class H8Constants {
 
     /**
      * H8 TCP 命令码枚举
-     * 基于 o2.a (TcpManager) 中解析的命令映射
+     * 基于 o2.f.c (Config) 枚举的 ordinal 值
      */
     public enum Command {
-        /** 获取系统参数 (固件信息等) */
+        /** 获取系统参数 (固件信息等) - 服务器连接后自动推送 */
         SYS_PARAM_GET(0),
-        /** 开启预览编码 */
+        /** 设置状态 */
+        STATE_SET(1),
+        /** 开启预览编码 (视频预览) */
         VID_ENC_PREVIEW_ON(2),
         /** 关闭预览编码 */
         VID_ENC_PREVIEW_OFF(3),
@@ -66,16 +68,44 @@ public final class H8Constants {
         VID_ENC_START(4),
         /** 停止录制/编码 */
         VID_ENC_STOP(5),
+        /** 暂停录制 */
+        VID_ENC_PAUSE(6),
+        /** 恢复录制 */
+        VID_ENC_RESUME(7),
+        /** 拍照 */
+        VID_ENC_CAPTURE(11),
         /** 设置分辨率 */
-        RESOLUTION_SET(21),
-        /** 通知无人机断开网络连接 */
-        NET_DISCONN(73),
+        RESOLUTION_SET(16),
+        /** 设置色相 */
+        HUE_SET(20),
+        /** 设置饱和度 */
+        SATURATION_SET(21),
+        /** 设置亮度 */
+        BRIGHTNESS_SET(22),
+        /** 设置对比度 */
+        CONTRAST_SET(23),
+        /** 设置锐度 */
+        SHARPNESS_SET(24),
+        /** 设置 ISO */
+        ISO_SET(25),
+        /** 设置帧率 */
+        FRM_RATE_SET(28),
+        /** 设置日期时间 */
+        DATE_TIME_SET(29),
+        /** 获取固件版本 */
+        FIRMWARE_VERSION_GET(39),
+        /** 获取 SD 卡信息 */
+        CARD_INFO_GET(63),
+        /** 通知无人机断开网络 */
+        NET_DISCONN(67),
         /** 绑定 APP 的 UDP 端口 */
         CMD_BIND_APP_UDP(94),
         /** TCP 连接已建立通知 */
         CMD_TCP_CONNECTED(116),
         /** 视频流格式信息 */
-        CMD_STREAM_FORMAT(143);
+        CMD_STREAM_FORMAT(143),
+        /** 断开 (MAX sentinel) */
+        MAX(78);
 
         private final int code;
 

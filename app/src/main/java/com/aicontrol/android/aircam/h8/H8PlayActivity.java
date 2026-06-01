@@ -99,6 +99,9 @@ public class H8PlayActivity extends BaseActivity
         setContentView(R.layout.activity_h8_play);
         initViews();
         initComponents();
+
+        // 自动连接 TCP (与原版 H8 一致: TcpManager 作为 Service 自动连接)
+        connectTcp();
     }
 
     @Override
@@ -284,14 +287,10 @@ public class H8PlayActivity extends BaseActivity
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
-                appendLog("✓ TCP 已连接");
-                updateStatus("已连接");
+                appendLog("✓ TCP 已连接，等待服务器推送...");
+                updateStatus("已连接 - 等待 banner");
                 mBtnConnect.setText("断开");
-                mBtnStart.setEnabled(true);
-
-                // 连接成功后查询固件信息
-                mTcpManager.sendCommand(H8Constants.Command.SYS_PARAM_GET);
-                appendLog("→ 发送 CMD:0 查询固件信息");
+                // 不手动发 CMD:0，等待服务器主动推送 banner
             }
         });
     }
@@ -330,13 +329,19 @@ public class H8PlayActivity extends BaseActivity
 
                 appendLog("← CMD:" + cmdName + " R:" + result + " P:" + param);
 
-                // 处理固件信息 (CMD=0)
-                if (cmd == H8Constants.Command.SYS_PARAM_GET.getCode() && result == 0 && !param.isEmpty()) {
+                // 处理固件 banner (CMD=0) - 服务器主动推送
+                if (cmd == 0 && result == 0 && !param.isEmpty()) {
                     mFirmwareInfo = param;
-                    appendLog("固件: " + param);
-
-                    // 解析固件字符串
+                    appendLog("★ 收到固件 banner: " + param);
                     parseFirmwareInfo(param);
+
+                    // 与原版 H8 一致: 收到 banner 后自动启动 UDP 视频流
+                    // 原版: TcpManager.s=true → observer 通知 → H3() → Z3() → new UdpThread().start()
+                    if (!mStreaming) {
+                        appendLog("★ banner 已收到，自动启动视频流...");
+                        mBtnStart.setEnabled(true);
+                        startStreaming();
+                    }
                 }
             }
         });
@@ -344,8 +349,20 @@ public class H8PlayActivity extends BaseActivity
 
     @Override
     public void onTcpData(byte[] data) {
-        // 原始数据回调 (调试用)
-        Log.d(TAG, "TCP 原始数据: " + data.length + " 字节");
+        // 原始二进制数据回调 (调试用)
+        if (data.length > 0 && data.length < 100) {
+            StringBuilder hex = new StringBuilder();
+            for (int i = 0; i < Math.min(data.length, 32); i++) {
+                hex.append(String.format("%02X ", data[i] & 0xFF));
+            }
+            Log.d(TAG, "TCP 二进制数据: " + data.length + "B hex: " + hex);
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    appendLog("← 二进制数据: " + data.length + "B");
+                }
+            });
+        }
     }
 
     // ======================== H8UdpVideoCallback 实现 ========================

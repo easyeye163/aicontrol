@@ -5,11 +5,11 @@ import android.util.Log;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.UnsupportedEncodingException;
-
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.io.DataInputStream;
+import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.io.BufferedWriter;
+import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
@@ -51,8 +51,11 @@ public class H8TcpManager {
     /** TCP 套接字 */
     private Socket mSocket;
 
-    /** 输出流写入器 (发送 JSON 命令) */
-    private OutputStreamWriter mWriter;
+    /** 原始输出流 (用于二进制发送) */
+    private java.io.OutputStream mRawOutputStream;
+
+    /** 输出流写入器 (发送 JSON 命令) - BufferedWriter like original H8 */
+    private BufferedWriter mWriter;
 
     /** TCP 读取线程 */
     private Thread mReadThread;
@@ -65,6 +68,9 @@ public class H8TcpManager {
 
     /** 当前连接状态 */
     private volatile boolean mIsConnected = false;
+
+    /** 是否已收到固件 banner (CMD:0 响应) */
+    private volatile boolean mBannerReceived = false;
 
     /** 观察者列表 (线程安全) */
     private final CopyOnWriteArrayList<H8TcpObserver> mObservers = new CopyOnWriteArrayList<>();
@@ -105,8 +111,12 @@ public class H8TcpManager {
                     H8Constants.CONNECT_TIMEOUT_MS
             );
 
-            mWriter = new OutputStreamWriter(mSocket.getOutputStream(), "UTF-8");
+            // 保存原始输出流，与原版 H8 TcpManager 一致
+            mRawOutputStream = mSocket.getOutputStream();
+            // BufferedWriter 包装 OutputStreamWriter，用于发送换行分隔的 JSON
+            mWriter = new BufferedWriter(new OutputStreamWriter(mRawOutputStream, "UTF-8"));
             mIsConnected = true;
+            mBannerReceived = false;
 
             Log.d(TAG, "TCP 连接成功");
             notifyConnected();
@@ -159,6 +169,7 @@ public class H8TcpManager {
             }
             mWriter = null;
         }
+        mRawOutputStream = null;
 
         // 关闭套接字
         if (mSocket != null) {
@@ -217,27 +228,45 @@ public class H8TcpManager {
 
     /**
      * 读取循环 (在后台线程运行)
-     * 每行是一个 JSON 响应对象
+     * 与原版 H8 TcpManager 一致：使用 DataInputStream.read(byte[]) 读取原始字节，
+     * 用 ISO-8859-1 编码转为字符串，尝试 JSON 解析，失败则作为二进制数据分发。
      */
     private void readLoop() {
         try {
-            BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(mSocket.getInputStream(), "UTF-8")
-            );
+            DataInputStream dis = new DataInputStream(mSocket.getInputStream());
+            byte[] buffer = new byte[1024];
 
-            String line;
             while (!Thread.currentThread().isInterrupted() && mIsConnected) {
-                line = reader.readLine();
-                if (line == null) {
+                int bytesRead = dis.read(buffer);
+                if (bytesRead == -1) {
                     Log.d(TAG, "TCP 读取: 连接已关闭 (EOF)");
                     break;
                 }
-                if (line.isEmpty()) continue;
+                if (bytesRead <= 0) continue;
 
-                Log.d(TAG, "TCP 收到: " + line);
-                parseAndNotify(line);
+                // 用 ISO-8859-1 编码（字节保持映射），与原版 H8 一致
+                String data = new String(buffer, 0, bytesRead, "ISO-8859-1").trim();
+
+                // 输出 hex 调试日志
+                if (data.length() < 200) {
+                    StringBuilder hex = new StringBuilder();
+                    for (int i = 0; i < Math.min(bytesRead, 32); i++) {
+                        hex.append(String.format("%02X ", buffer[i] & 0xFF));
+                    }
+                    Log.d(TAG, "TCP recv " + bytesRead + "B hex: " + hex);
+                }
+
+                // 尝试 JSON 解析
+                boolean parsed = parseAndNotify(data);
+                if (!parsed) {
+                    // JSON 解析失败，作为二进制数据分发
+                    Log.d(TAG, "TCP 二进制数据: " + bytesRead + " 字节 (非JSON)");
+                    byte[] binaryData = new byte[bytesRead];
+                    System.arraycopy(buffer, 0, binaryData, 0, bytesRead);
+                    notifyData(binaryData);
+                }
             }
-        } catch (Exception e) {
+        } catch (IOException e) {
             if (!mShouldStop) {
                 Log.w(TAG, "TCP 读取异常: " + e.getMessage());
             }
@@ -245,7 +274,6 @@ public class H8TcpManager {
             mIsConnected = false;
             notifyDisconnected();
 
-            // 如果不是主动断开，安排重连
             if (!mShouldStop) {
                 scheduleReconnect();
             }
@@ -256,10 +284,12 @@ public class H8TcpManager {
 
     /**
      * 解析 JSON 行并通知观察者
-     *
+     * 与原版 H8 TcpManager.c.a(String) 一致
      * JSON 格式: {"CMD":int, "RESULT":int, "PARAM":"string"}
+     *
+     * @return true 如果成功解析为 JSON，false 如果不是有效 JSON
      */
-    private void parseAndNotify(String jsonLine) {
+    private boolean parseAndNotify(String jsonLine) {
         try {
             JSONObject json = new JSONObject(jsonLine);
 
@@ -269,15 +299,18 @@ public class H8TcpManager {
 
             Log.d(TAG, "解析命令: CMD=" + cmd + " RESULT=" + result + " PARAM=" + param);
 
-            notifyCommand(cmd, result, param);
+            // 标记 banner 已收到 (CMD=0)
+            if (cmd == 0) {
+                mBannerReceived = true;
+            }
 
-            // 也通知原始数据
-            notifyData(jsonLine.getBytes("UTF-8"));
+            notifyCommand(cmd, result, param);
+            return true;
 
         } catch (JSONException e) {
-            Log.w(TAG, "JSON 解析失败: " + jsonLine + " | " + e.getMessage());
-        } catch (UnsupportedEncodingException e) {
-            Log.w(TAG, "编码异常: " + e.getMessage());
+            // 不是有效 JSON，返回 false 让调用者作为二进制处理
+            Log.d(TAG, "非JSON数据: " + jsonLine.length() + "字符");
+            return false;
         }
     }
 
@@ -285,21 +318,21 @@ public class H8TcpManager {
 
     /**
      * 发送 JSON 命令到无人机
-     *
-     * @param cmd     命令码
-     * @param params  附加参数键值对 (可为 null)
+     * 格式与原版 H8 一致: {"CMD": <int>, "PARAM": <value>}\n
+     * @param cmd     命令枚举
+     * @param param   PARAM 值 (int 用 String 表示, 如 "0", "1")
      */
-    public void sendCommand(final H8Constants.Command cmd, final String... params) {
-        sendCommand(cmd.getCode(), params);
+    public void sendCommand(final H8Constants.Command cmd, final String param) {
+        sendCommand(cmd.getCode(), param);
     }
 
     /**
-     * 发送原始命令码到无人机
-     *
+     * 发送 JSON 命令到无人机
+     * 格式与原版 H8 JsonUtil 一致: {"CMD": <int>, "PARAM": <value>}\n
      * @param cmdCode 命令码数值
-     * @param params  附加参数键值对 (可为 null)，偶数位为 key，奇数位为 value
+     * @param param   PARAM 值字符串 (如 "0", "1", "\"start\"", 或嵌套JSON字符串)
      */
-    public void sendCommand(final int cmdCode, final String... params) {
+    public void sendCommand(final int cmdCode, final String param) {
         if (!mIsConnected || mWriter == null) {
             Log.w(TAG, "发送失败: TCP 未连接");
             return;
@@ -308,45 +341,46 @@ public class H8TcpManager {
         try {
             JSONObject json = new JSONObject();
             json.put("CMD", cmdCode);
+            json.put("PARAM", param != null ? param : "");
 
-            // 附加参数
-            if (params != null && params.length >= 2) {
-                for (int i = 0; i < params.length - 1; i += 2) {
-                    json.put(params[i], params[i + 1]);
-                }
-            }
-
-            String cmdStr = json.toString() + "\n";
+            // 与原版 H8 一致: 替换换行符 + 追加换行符
+            String cmdStr = json.toString().replace("\n", " ") + "\n";
             Log.d(TAG, "TCP 发送: " + cmdStr.trim());
 
             synchronized (mWriter) {
                 mWriter.write(cmdStr);
                 mWriter.flush();
             }
+
+            // 与原版 H8 一致: 发送后 50ms 延迟
+            try { Thread.sleep(50); } catch (InterruptedException ignored) {}
         } catch (Exception e) {
             Log.e(TAG, "发送命令失败: " + e.getMessage());
         }
     }
 
     /**
-     * 发送原始 JSON 字符串 (以换行结尾)
+     * 发送原始字符串命令 (与原版 H8 TcpManager.m(String) 一致)
+     * 替换换行符 + 追加换行符 + 50ms 延迟
      *
-     * @param jsonStr 完整的 JSON 字符串
+     * @param cmdStr 命令字符串
      */
-    public void sendRawCommand(final String jsonStr) {
+    public void sendRawCommand(final String cmdStr) {
         if (!mIsConnected || mWriter == null) {
             Log.w(TAG, "发送失败: TCP 未连接");
             return;
         }
 
         try {
-            String cmdStr = jsonStr.endsWith("\n") ? jsonStr : jsonStr + "\n";
-            Log.d(TAG, "TCP 发送(原始): " + cmdStr.trim());
+            String sendStr = cmdStr.replace("\n", " ") + "\n";
+            Log.d(TAG, "TCP 发送(原始): " + sendStr.trim());
 
             synchronized (mWriter) {
-                mWriter.write(cmdStr);
+                mWriter.write(sendStr);
                 mWriter.flush();
             }
+
+            try { Thread.sleep(50); } catch (InterruptedException ignored) {}
         } catch (Exception e) {
             Log.e(TAG, "发送原始命令失败: " + e.getMessage());
         }
@@ -381,6 +415,13 @@ public class H8TcpManager {
      */
     public boolean isConnected() {
         return mIsConnected;
+    }
+
+    /**
+     * @return 是否已收到固件 banner (CMD:0 响应)
+     */
+    public boolean isBannerReceived() {
+        return mBannerReceived;
     }
 
     // ======================== 通知方法 ========================
