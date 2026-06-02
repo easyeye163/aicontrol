@@ -22,14 +22,34 @@
         android:orientation="vertical"
         android:padding="8dp">
 
-        <TextView
-            android:id="@+id/h8_tv_title"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="H8 Drone Stream"
-            android:textColor="#FFFFFF"
-            android:textSize="16sp"
-            android:textStyle="bold" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/h8_tv_title"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="H8 Drone v0.0.99"
+                android:textColor="#FFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <!-- 日志切换按钮 -->
+            <Button
+                android:id="@+id/h8_btn_log"
+                android:layout_width="40dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="8dp"
+                android:background="#555555"
+                android:padding="0dp"
+                android:text="LOG"
+                android:textColor="#FFFFFF"
+                android:textSize="10sp" />
+        </LinearLayout>
 
         <TextView
             android:id="@+id/h8_tv_status"
@@ -56,43 +76,55 @@
             android:id="@+id/h8_btn_connect"
             android:layout_width="0dp"
             android:layout_height="44dp"
-            android:layout_margin="4dp"
+            android:layout_margin="3dp"
             android:layout_weight="1"
             android:background="@android:color/holo_green_dark"
             android:text="连接"
             android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:textSize="13sp" />
 
         <!-- 开始接收按钮 -->
         <Button
             android:id="@+id/h8_btn_start"
             android:layout_width="0dp"
             android:layout_height="44dp"
-            android:layout_margin="4dp"
+            android:layout_margin="3dp"
             android:layout_weight="1"
             android:background="@android:color/holo_blue_dark"
             android:text="开始"
             android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:textSize="13sp" />
 
         <!-- 停止按钮 -->
         <Button
             android:id="@+id/h8_btn_stop"
             android:layout_width="0dp"
             android:layout_height="44dp"
-            android:layout_margin="4dp"
+            android:layout_margin="3dp"
             android:layout_weight="1"
             android:background="@android:color/holo_red_dark"
             android:text="停止"
             android:textColor="#FFFFFF"
-            android:textSize="14sp" />
+            android:textSize="13sp" />
+
+        <!-- 摄像头切换按钮 -->
+        <Button
+            android:id="@+id/h8_btn_camera"
+            android:layout_width="0dp"
+            android:layout_height="44dp"
+            android:layout_margin="3dp"
+            android:layout_weight="1"
+            android:background="@android:color/holo_orange_dark"
+            android:text="后置"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp" />
     </LinearLayout>
 
     <!-- 日志输出区域 (默认隐藏，可通过按钮切换显示) -->
     <ScrollView
         android:id="@+id/h8_log_container"
         android:layout_width="match_parent"
-        android:layout_height="120dp"
+        android:layout_height="160dp"
         android:layout_above="@id/h8_bottom_bar"
         android:background="#CC000000"
         android:visibility="gone">

@@ -14,11 +14,19 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
- * H8 无人机 TCP 控制通道管理器
+ * H8 无人机 TCP 控制通道管理器 v0.0.99
  *
  * 基于 HFun APK 逆向分析中的 o2.a (TcpManager) 重构。
+ *
+ * v0.0.99 变更:
+ * - 新增 sendCommandAndWait() 同步阻塞方法，用于命令序列化发送
+ * - banner 自动解析（嵌套 JSON PARAM 字段）
+ * - 增强二进制数据检测和日志
  *
  * 功能:
  * - 连接 H8 无人机 TCP 端口 4646，超时 3 秒
@@ -27,22 +35,13 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * - CMD=0 响应包含固件字符串 (如 "H8-720P-6-1-1-2-00020003-2-1-1-4")
  * - 断线后每 200ms 自动重连
  * - 观察者模式分发连接事件和命令响应
+ * - 同步 sendCommandAndWait 用于初始化命令序列 (CMD:94 → CMD:2)
  *
  * 线程模型:
  * - connectAsync(): 在后台线程中建立连接
  * - 读取循环在独立线程中运行
  * - 观察者回调在读取线程中同步执行 (非主线程)
- *
- * 使用方式:
- * <pre>
- *   H8TcpManager tcpManager = new H8TcpManager();
- *   tcpManager.registerObserver(this);
- *   tcpManager.connectAsync();
- *   // ...
- *   tcpManager.sendCommand(H8Constants.Command.SYS_PARAM_GET);
- *   // ...
- *   tcpManager.disconnect();
- * </pre>
+ * - sendCommandAndWait(): 在调用线程中阻塞等待响应
  */
 public class H8TcpManager {
 
@@ -74,6 +73,20 @@ public class H8TcpManager {
 
     /** 观察者列表 (线程安全) */
     private final CopyOnWriteArrayList<H8TcpObserver> mObservers = new CopyOnWriteArrayList<>();
+
+    // ======================== 同步命令等待机制 ========================
+
+    /** 同步等待的命令码 (-1 表示空闲) */
+    private final AtomicReference<Integer> mWaitingForCmd = new AtomicReference<>(-1);
+
+    /** 同步等待的 CountDownLatch */
+    private volatile CountDownLatch mWaitLatch = null;
+
+    /** 同步等待的结果码 */
+    private volatile int mWaitResult = -999;
+
+    /** 同步等待的 PARAM 值 */
+    private volatile String mWaitParam = "";
 
     // ======================== 连接管理 ========================
 
@@ -160,6 +173,9 @@ public class H8TcpManager {
             mReconnectThread.interrupt();
             mReconnectThread = null;
         }
+
+        // 释放同步等待
+        releaseSyncWait();
 
         // 关闭写入器
         if (mWriter != null) {
@@ -287,6 +303,8 @@ public class H8TcpManager {
      * 与原版 H8 TcpManager.c.a(String) 一致
      * JSON 格式: {"CMD":int, "RESULT":int, "PARAM":"string"}
      *
+     * v0.0.99: 增加对同步等待机制的支持
+     *
      * @return true 如果成功解析为 JSON，false 如果不是有效 JSON
      */
     private boolean parseAndNotify(String jsonLine) {
@@ -304,6 +322,10 @@ public class H8TcpManager {
                 mBannerReceived = true;
             }
 
+            // 检查是否有同步等待者
+            checkSyncWait(cmd, result, param);
+
+            // 异步通知观察者
             notifyCommand(cmd, result, param);
             return true;
 
@@ -311,6 +333,92 @@ public class H8TcpManager {
             // 不是有效 JSON，返回 false 让调用者作为二进制处理
             Log.d(TAG, "非JSON数据: " + jsonLine.length() + "字符");
             return false;
+        }
+    }
+
+    // ======================== 同步命令等待 ========================
+
+    /**
+     * 发送命令并同步等待指定 CMD 的响应
+     *
+     * 用于初始化阶段的命令序列，例如:
+     *   sendCommandAndWait(94, Command.CMD_BIND_APP_UDP, "1563", 3000)
+     *   sendCommandAndWait(2, Command.VID_ENC_PREVIEW_ON, "", 3000)
+     *
+     * 注意: 此方法会阻塞调用线程。必须在后台线程中调用，不能在主线程调用。
+     *
+     * @param expectedCmd 期望收到的响应 CMD 码
+     * @param cmd         要发送的命令枚举
+     * @param param       命令参数
+     * @param timeoutMs   超时时间（毫秒）
+     * @return H8CommandResult 包含 result 和 param
+     */
+    public H8CommandResult sendCommandAndWait(int expectedCmd, H8Constants.Command cmd, String param, long timeoutMs) {
+        return sendCommandAndWait(expectedCmd, cmd.getCode(), param, timeoutMs);
+    }
+
+    /**
+     * 发送命令并同步等待指定 CMD 的响应
+     *
+     * @param expectedCmd 期望收到的响应 CMD 码
+     * @param cmdCode     要发送的命令码
+     * @param param       命令参数
+     * @param timeoutMs   超时时间（毫秒）
+     * @return H8CommandResult 包含 result 和 param
+     */
+    public H8CommandResult sendCommandAndWait(int expectedCmd, int cmdCode, String param, long timeoutMs) {
+        // 设置等待状态
+        if (!mWaitingForCmd.compareAndSet(-1, expectedCmd)) {
+            Log.w(TAG, "已有同步等待在进行 (CMD=" + mWaitingForCmd.get() + ")，无法发送");
+            return new H8CommandResult(-999, "SYNC_BUSY");
+        }
+
+        mWaitLatch = new CountDownLatch(1);
+        mWaitResult = -999;
+        mWaitParam = "";
+
+        try {
+            // 发送命令
+            sendCommand(cmdCode, param);
+
+            // 等待响应
+            boolean waited = mWaitLatch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!waited) {
+                Log.w(TAG, "sendCommandAndWait 超时 (CMD=" + expectedCmd + ", " + timeoutMs + "ms)");
+                return new H8CommandResult(-1, "TIMEOUT");
+            }
+
+            return new H8CommandResult(mWaitResult, mWaitParam);
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new H8CommandResult(-1, "INTERRUPTED");
+        } finally {
+            releaseSyncWait();
+        }
+    }
+
+    /**
+     * 检查同步等待状态
+     * 如果当前等待的 CMD 匹配收到的 CMD，释放 latch
+     */
+    private void checkSyncWait(int cmd, int result, String param) {
+        int waiting = mWaitingForCmd.get();
+        if (waiting >= 0 && cmd == waiting && mWaitLatch != null) {
+            mWaitResult = result;
+            mWaitParam = param;
+            mWaitLatch.countDown();
+        }
+    }
+
+    /**
+     * 释放同步等待状态
+     */
+    private void releaseSyncWait() {
+        mWaitingForCmd.set(-1);
+        if (mWaitLatch != null) {
+            mWaitLatch.countDown(); // 确保不会死锁
+            mWaitLatch = null;
         }
     }
 
@@ -383,6 +491,28 @@ public class H8TcpManager {
             try { Thread.sleep(50); } catch (InterruptedException ignored) {}
         } catch (Exception e) {
             Log.e(TAG, "发送原始命令失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 发送原始二进制数据
+     *
+     * @param data 二进制数据
+     */
+    public void sendRawBytes(byte[] data) {
+        if (!mIsConnected || mRawOutputStream == null) {
+            Log.w(TAG, "发送失败: TCP 未连接");
+            return;
+        }
+
+        try {
+            mRawOutputStream.write(data);
+            mRawOutputStream.flush();
+            Log.d(TAG, "TCP 发送二进制: " + data.length + "B");
+
+            try { Thread.sleep(50); } catch (InterruptedException ignored) {}
+        } catch (Exception e) {
+            Log.e(TAG, "发送二进制数据失败: " + e.getMessage());
         }
     }
 
@@ -463,6 +593,37 @@ public class H8TcpManager {
             } catch (Exception e) {
                 Log.w(TAG, "观察者 onTcpData 异常: " + e.getMessage());
             }
+        }
+    }
+
+    // ======================== 命令结果容器 ========================
+
+    /**
+     * 同步命令等待的返回结果
+     */
+    public static class H8CommandResult {
+        /** 响应 RESULT 码 (0=成功) */
+        public final int result;
+
+        /** 响应 PARAM 字符串 */
+        public final String param;
+
+        public H8CommandResult(int result, String param) {
+            this.result = result;
+            this.param = param;
+        }
+
+        public boolean isSuccess() {
+            return result == 0;
+        }
+
+        public boolean isTimeout() {
+            return "TIMEOUT".equals(param);
+        }
+
+        @Override
+        public String toString() {
+            return "H8CommandResult{result=" + result + ", param='" + param + "'}";
         }
     }
 }
