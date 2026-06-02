@@ -279,6 +279,13 @@ public class H8TcpManager {
                     Log.d(TAG, "TCP 二进制数据: " + bytesRead + " 字节 (非JSON)");
                     byte[] binaryData = new byte[bytesRead];
                     System.arraycopy(buffer, 0, binaryData, 0, bytesRead);
+
+                    // 检查二进制等待
+                    if (mBinaryWaitLatch != null) {
+                        mBinaryWaitData = binaryData;
+                        mBinaryWaitLatch.countDown();
+                    }
+
                     notifyData(binaryData);
                 }
             }
@@ -500,6 +507,16 @@ public class H8TcpManager {
      * @param data 二进制数据
      */
     public void sendRawBytes(byte[] data) {
+        sendRawBytes(data, 1000);
+    }
+
+    /**
+     * 发送原始二进制数据并等待响应
+     *
+     * @param data 二进制数据
+     * @param timeoutMs 等待响应超时(毫秒)
+     */
+    public void sendRawBytes(byte[] data, long timeoutMs) {
         if (!mIsConnected || mRawOutputStream == null) {
             Log.w(TAG, "发送失败: TCP 未连接");
             return;
@@ -515,6 +532,49 @@ public class H8TcpManager {
             Log.e(TAG, "发送二进制数据失败: " + e.getMessage());
         }
     }
+
+    /**
+     * 发送二进制数据并同步等待响应
+     *
+     * @param data 二进制数据
+     * @param timeoutMs 超时时间
+     * @return 收到的响应数据，超时返回 null
+     */
+    public byte[] sendRawBytesAndWait(byte[] data, long timeoutMs) {
+        if (!mIsConnected || mRawOutputStream == null) {
+            Log.w(TAG, "发送失败: TCP 未连接");
+            return null;
+        }
+
+        mBinaryWaitLatch = new CountDownLatch(1);
+        mBinaryWaitData = null;
+
+        try {
+            mRawOutputStream.write(data);
+            mRawOutputStream.flush();
+            Log.d(TAG, "TCP 发送二进制(等待): " + data.length + "B");
+
+            StringBuilder hex = new StringBuilder();
+            for (byte b : data) hex.append(String.format("%02X ", b & 0xFF));
+            Log.d(TAG, "发送: " + hex.toString());
+
+            boolean waited = mBinaryWaitLatch.await(timeoutMs, TimeUnit.MILLISECONDS);
+            if (!waited) {
+                Log.w(TAG, "二进制等待超时 (" + timeoutMs + "ms)");
+                return null;
+            }
+            return mBinaryWaitData;
+        } catch (Exception e) {
+            Log.e(TAG, "发送二进制等待失败: " + e.getMessage());
+            return null;
+        } finally {
+            mBinaryWaitLatch = null;
+        }
+    }
+
+    /** 二进制响应等待 */
+    private volatile CountDownLatch mBinaryWaitLatch = null;
+    private volatile byte[] mBinaryWaitData = null;
 
     // ======================== 观察者管理 ========================
 

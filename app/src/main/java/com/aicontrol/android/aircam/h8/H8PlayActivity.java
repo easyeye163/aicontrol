@@ -249,10 +249,12 @@ public class H8PlayActivity extends BaseActivity
      *
      * 必须在后台线程中执行（sendCommandAndWait 是阻塞的）
      *
-     * 正确流程:
-     * 1. CMD:94 PARAM="1563" — 告诉无人机往 UDP 端口 1563 推视频流
-     * 2. CMD:2 PARAM="" — 开启视频编码预览
-     * 3. CMD:116 PARAM="" — 通知 TCP 已连接
+     * v0.0.100 增强版:
+     * 1. 二进制握手探索 — 分析 TCP 4646 上的 challenge-response
+     * 2. CMD:94 PARAM="1563" — 绑定 APP 的 UDP 端口
+     * 3. CMD:2 PARAM="" — 开启视频编码预览
+     * 4. CMD:116 PARAM="" — 通知 TCP 已连接
+     * 5. 尝试多种组合策略
      */
     private void activateVideoStream() {
         if (!mTcpConnected || !mTcpManager.isBannerReceived()) {
@@ -263,67 +265,128 @@ public class H8PlayActivity extends BaseActivity
         new Thread("H8Activate") {
             @Override
             public void run() {
-                appendLog("========== v0.0.99 视频激活序列 ==========");
+                appendLog("========== v0.0.100 视频激活序列 ==========");
+
+                // === Phase 1: 二进制握手探索 ===
+                // 发现: 发送任意二进制数据到 TCP:4646 会收到 16B 响应
+                // 这可能是 challenge-response 认证机制
+                appendLog("[PHASE1] 二进制握手探索...");
+                exploreBinaryHandshake();
+
+                // === Phase 2: JSON 命令序列 ===
+                appendLog("[PHASE2] JSON 命令序列...");
 
                 // Step 1: CMD:94 — 绑定 APP 的 UDP 端口
-                appendLog("[ACTIVATE] 发送 CMD:94 (绑定UDP端口 1563)...");
+                appendLog("[CMD] 发送 CMD:94 (绑定UDP端口 1563)...");
                 H8TcpManager.H8CommandResult r94 = mTcpManager.sendCommandAndWait(
                         94, H8Constants.Command.CMD_BIND_APP_UDP, "1563", 3000
                 );
-                appendLog("[ACTIVATE] CMD:94 响应: " + r94);
+                appendLog("[CMD] CMD:94 响应: " + r94);
 
-                if (r94.isTimeout()) {
-                    appendLog("[ACTIVATE] CMD:94 超时，尝试继续...");
-                } else if (!r94.isSuccess()) {
-                    appendLog("[ACTIVATE] CMD:94 返回 RESULT=" + r94.result + "，尝试继续...");
-                } else {
-                    appendLog("[ACTIVATE] ★ CMD:94 成功! UDP 端口已绑定");
-                }
-
-                // 等待无人机处理
                 try { Thread.sleep(500); } catch (InterruptedException ignored) {}
 
                 // Step 2: CMD:2 — 开启视频编码预览
-                appendLog("[ACTIVATE] 发送 CMD:2 (开启视频预览)...");
+                appendLog("[CMD] 发送 CMD:2 (开启视频预览)...");
                 H8TcpManager.H8CommandResult r2 = mTcpManager.sendCommandAndWait(
                         2, H8Constants.Command.VID_ENC_PREVIEW_ON, "", 3000
                 );
-                appendLog("[ACTIVATE] CMD:2 响应: " + r2);
+                appendLog("[CMD] CMD:2 响应: " + r2);
 
                 if (r2.isTimeout()) {
-                    appendLog("[ACTIVATE] CMD:2 超时");
-                    // 重试一次
-                    appendLog("[ACTIVATE] 重试 CMD:2...");
+                    appendLog("[CMD] CMD:2 超时，重试...");
                     H8TcpManager.H8CommandResult r2r = mTcpManager.sendCommandAndWait(
                             2, H8Constants.Command.VID_ENC_PREVIEW_ON, "", 3000
                     );
-                    appendLog("[ACTIVATE] CMD:2 重试响应: " + r2r);
-                } else if (r2.isSuccess()) {
-                    appendLog("[ACTIVATE] ★ CMD:2 成功! 视频编码已激活");
-                } else {
-                    appendLog("[ACTIVATE] CMD:2 返回 RESULT=" + r2.result + " PARAM=" + r2.param);
+                    appendLog("[CMD] CMD:2 重试: " + r2r);
                 }
 
                 try { Thread.sleep(300); } catch (InterruptedException ignored) {}
 
                 // Step 3: CMD:116 — TCP 连接已建立通知
-                appendLog("[ACTIVATE] 发送 CMD:116 (TCP连接通知)...");
+                appendLog("[CMD] 发送 CMD:116 (TCP连接通知)...");
                 H8TcpManager.H8CommandResult r116 = mTcpManager.sendCommandAndWait(
                         116, H8Constants.Command.CMD_TCP_CONNECTED, "", 2000
                 );
-                appendLog("[ACTIVATE] CMD:116 响应: " + r116);
+                appendLog("[CMD] CMD:116 响应: " + r116);
 
-                // 等待无人机准备就绪
+                // === Phase 3: 等待 + 尝试 UDP ===
                 try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
 
-                // 标记视频已激活
                 mVideoActivated = true;
-                appendLog("[ACTIVATE] ★ 视频激活序列完成，准备启动 UDP 接收");
+                appendLog("[ACTIVATE] ★ 激活序列完成，启动 UDP 接收");
 
-                // 启动 UDP 视频接收
                 startUdpVideo();
             }
         }.start();
+    }
+
+    /**
+     * 探索二进制握手协议
+     *
+     * v0.0.98 日志发现:
+     * - 发送 D8 C0 D9 → 收到 16B (EC 0D B4 94 ...)
+     * - 发送 01 00 00 00 → 收到 16B (5E E5 98 DB ...)
+     * - 发送 02 00 00 00 → 收到 16B (92 14 59 72 ...)
+     * 所有响应都是 16 字节且每次不同 — 可能是 challenge-response 认证
+     *
+     * 策略: 发送 D8 C0 D9 → 收到 16B → 直接回传这 16B → 看是否完成握手
+     */
+    private void exploreBinaryHandshake() {
+        try {
+            // 发送 UDP 握手魔数 D8 C0 D9
+            byte[] handshake = H8Constants.HANDSHAKE_MAGIC;
+            byte[] response = mTcpManager.sendRawBytesAndWait(handshake, 2000);
+
+            if (response == null) {
+                appendLog("[BINARY] D8 C0 D9 无响应");
+                return;
+            }
+
+            String hex = bytesToHex(response);
+            appendLog("[BINARY] D8 C0 D9 → " + response.length + "B: " + hex);
+
+            // 尝试直接回传收到的数据 (echo-back 策略)
+            appendLog("[BINARY] 尝试回传收到的 16B...");
+            byte[] echoResponse = mTcpManager.sendRawBytesAndWait(response, 2000);
+
+            if (echoResponse != null) {
+                appendLog("[BINARY] 回传响应: " + echoResponse.length + "B: " + bytesToHex(echoResponse));
+            } else {
+                appendLog("[BINARY] 回传无响应");
+            }
+
+            try { Thread.sleep(200); } catch (InterruptedException ignored) {}
+
+            // 尝试发送 01 00 00 00 看响应模式
+            byte[] ping1 = {0x01, 0x00, 0x00, 0x00};
+            byte[] resp1 = mTcpManager.sendRawBytesAndWait(ping1, 1000);
+            if (resp1 != null) {
+                appendLog("[BINARY] 01 00 00 00 → " + resp1.length + "B: " + bytesToHex(resp1));
+            }
+
+            // 尝试发送 4 字节 0 (空 ping)
+            byte[] ping0 = {0x00, 0x00, 0x00, 0x00};
+            byte[] resp0 = mTcpManager.sendRawBytesAndWait(ping0, 1000);
+            if (resp0 != null) {
+                appendLog("[BINARY] 00 00 00 00 → " + resp0.length + "B: " + bytesToHex(resp0));
+            }
+
+        } catch (Exception e) {
+            appendLog("[BINARY] 探索异常: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 字节数组转十六进制字符串
+     */
+    private static String bytesToHex(byte[] data) {
+        if (data == null) return "null";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < Math.min(data.length, 64); i++) {
+            sb.append(String.format("%02X ", data[i] & 0xFF));
+        }
+        if (data.length > 64) sb.append("... (" + data.length + "B total)");
+        return sb.toString().trim();
     }
 
     // ======================== 视频流管理 ========================

@@ -127,7 +127,7 @@ class HomeActivity : BaseActivity() {
             startActivity(Intent(this, TimelineActivity::class.java))
         }
         findViewById<View>(R.id.btnM8).setOnClickListener {
-            startActivity(Intent(this, com.aicontrol.android.m8.activity.M8PlayActivity::class.java))
+            startActivity(Intent(this, com.aicontrol.android.aircam.h8.H8PlayActivity::class.java))
         }
         findViewById<View>(R.id.btnCar).setOnClickListener {
             startActivity(Intent(this, CarControlActivity::class.java))
