@@ -10,7 +10,10 @@
         android:id="@+id/h8_surface_video"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:layout_centerInParent="true" />
+        android:layout_centerInParent="true"
+        android:clickable="false"
+        android:focusable="false"
+        android:focusableInTouchMode="false" />
 
     <!-- 顶部状态栏 -->
     <LinearLayout
@@ -33,7 +36,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="H8 Drone v0.0.100"
+                android:text="H8 Drone v0.0.101"
                 android:textColor="#FFFFFF"
                 android:textSize="16sp"
                 android:textStyle="bold" />
@@ -41,14 +44,16 @@
             <!-- 日志切换按钮 -->
             <Button
                 android:id="@+id/h8_btn_log"
-                android:layout_width="40dp"
-                android:layout_height="32dp"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
                 android:layout_marginStart="8dp"
                 android:background="#555555"
-                android:padding="0dp"
+                android:minWidth="56dp"
+                android:paddingHorizontal="12dp"
                 android:text="LOG"
                 android:textColor="#FFFFFF"
-                android:textSize="10sp" />
+                android:textSize="11sp"
+                android:textStyle="bold" />
         </LinearLayout>
 
         <TextView
@@ -127,7 +132,7 @@
         android:layout_height="160dp"
         android:layout_above="@id/h8_bottom_bar"
         android:background="#CC000000"
-        android:visibility="gone">
+        android:visibility="visible">
 
         <TextView
             android:id="@+id/h8_tv_log"

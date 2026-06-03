@@ -4,6 +4,7 @@ import android.app.Activity;
 import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.View;
 import android.widget.Button;
@@ -51,7 +52,7 @@ import java.util.Locale;
  * </pre>
  */
 public class H8PlayActivity extends BaseActivity
-        implements H8TcpObserver, H8UdpVideoThread.H8UdpVideoCallback, H8VideoDecoder.H8DecoderCallback {
+        implements H8TcpObserver, H8UdpVideoThread.H8UdpVideoCallback, H8VideoDecoder.H8DecoderCallback, SurfaceHolder.Callback {
 
     private static final String TAG = "H8Play";
 
@@ -94,6 +95,9 @@ public class H8PlayActivity extends BaseActivity
 
     /** 视频激活是否完成 */
     private volatile boolean mVideoActivated = false;
+
+    /** 视频渲染 Surface (来自 SurfaceViews 的 SurfaceHolder) */
+    private volatile Surface mVideoSurface = null;
 
     /** 日志时间格式 */
     private final SimpleDateFormat mLogTimeFormat =
@@ -208,6 +212,9 @@ public class H8PlayActivity extends BaseActivity
         mTcpManager = new H8TcpManager();
         mRtpDepacketizer = new H8RtpDepacketizer();
         mVideoDecoder = new H8VideoDecoder();
+
+        // 注册 SurfaceHolder 回调，获取视频渲染 Surface
+        mSurfaceView.getHolder().addCallback(this);
     }
 
     // ======================== TCP 连接管理 ========================
@@ -414,6 +421,18 @@ public class H8PlayActivity extends BaseActivity
 
         // 初始化 RTP 去包化器
         mRtpDepacketizer.reset();
+
+        // v0.0.101: 将 SurfaceViews 的 Surface 传递给解码器，启用直接渲染
+        // 这样 MediaCodec 会直接将解码帧渲染到 SurfaceView，无需 Bitmap 中转
+        if (mVideoSurface != null && !mVideoSurface.isValid()) {
+            mVideoSurface = null;
+        }
+        if (mVideoSurface != null) {
+            mVideoDecoder.setSurface(mVideoSurface);
+            appendLog("[DECODER] 使用 Surface 直接渲染模式");
+        } else {
+            appendLog("[DECODER] Surface 未就绪，使用 Bitmap 回退模式");
+        }
 
         // 创建并启动解码器
         mVideoDecoder.setCallback(this);
@@ -827,6 +846,25 @@ public class H8PlayActivity extends BaseActivity
         });
     }
 
+    // ======================== SurfaceHolder.Callback 实现 ========================
+
+    @Override
+    public void surfaceCreated(SurfaceHolder holder) {
+        mVideoSurface = holder.getSurface();
+        appendLog("[SURFACE] Surface 已创建: " + mVideoSurface);
+    }
+
+    @Override
+    public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+        appendLog("[SURFACE] Surface 变更: " + width + "x" + height);
+    }
+
+    @Override
+    public void surfaceDestroyed(SurfaceHolder holder) {
+        appendLog("[SURFACE] Surface 已销毁");
+        mVideoSurface = null;
+    }
+
     /**
      * 切换日志显示/隐藏
      */
@@ -835,6 +873,20 @@ public class H8PlayActivity extends BaseActivity
             int visibility = mLogContainer.getVisibility() == View.VISIBLE
                     ? View.GONE : View.VISIBLE;
             mLogContainer.setVisibility(visibility);
+        }
+    }
+
+    /**
+     * 导出日志内容到剪贴板
+     */
+    private void exportLog() {
+        if (mTvLog != null && mTvLog.getText().length() > 0) {
+            String logText = mTvLog.getText().toString();
+            android.content.ClipboardManager clipboard =
+                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            android.content.ClipData clip = android.content.ClipData.newPlainText("H8 Log", logText);
+            clipboard.setPrimaryClip(clip);
+            appendLog("★ 日志已复制到剪贴板");
         }
     }
 }

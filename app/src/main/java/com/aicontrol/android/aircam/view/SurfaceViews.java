@@ -47,7 +47,8 @@ public class SurfaceViews extends SurfaceView implements SurfaceHolder.Callback 
         this.m_paint.setAntiAlias(true);
         this.matrix = new Matrix();
         this.m_holder.setFormat(-2);
-        this.rect = new Rect(0, 0, getWidth(), getHeight());
+        // v0.0.101: 初始 rect 使用 0x0，surfaceCreated/surfaceChanged 会更新
+        this.rect = new Rect(0, 0, 0, 0);
         Log.e(TAG, "width " + getWidth() + " height " + getHeight());
         this.mBitmap = BitmapFactory.decodeResource(getResources(), R.mipmap.play_bg_icon);
         if (this.mBitmap == null) {
@@ -82,6 +83,8 @@ public class SurfaceViews extends SurfaceView implements SurfaceHolder.Callback 
 
     @Override // android.view.SurfaceHolder.Callback
     public void surfaceChanged(SurfaceHolder surfaceHolder, int i, int i2, int i3) {
+        // v0.0.101: 更新 rect 为实际 Surface 尺寸
+        this.rect = new Rect(0, 0, i2, i3);
         SetBitmap(this.mBitmap);
     }
 
