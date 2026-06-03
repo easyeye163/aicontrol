@@ -23,20 +23,21 @@ import java.util.Date;
 import java.util.Locale;
 
 /**
- * H8 无人机视频播放主界面 v0.0.102
+ * H8 无人机视频播放主界面 v0.0.103
  *
- * v0.0.102 修复:
- * - CMD:94/CMD:116 超时不阻塞: 改为 fire-and-forget 发送
- * - 移除自动二进制握手探索 (可选手动触发)
- * - CMD:2 成功后立即启动 UDP，不等待 CMD:94/116
- * - 新增日志一键导出剪切板 (LOG 按钮长按)
- * - 增加多种激活策略，自动重试
+ * v0.0.103 变更:
+ * - LOG 旁新增 COPY 按钮: 一键导出全部日志到剪切板
+ * - 日志区域长按可选全选复制 (textIsSelectable)
+ * - UDP 增加详细诊断日志 (socket创建/绑定/握手/超时)
+ * - UDP 超时从 3s 改为 2s (更快检测无数据)
+ * - 每5s周期性报告UDP接收统计
+ * - CMD:94/116 fire-and-forget (v0.0.102延续)
  *
  * 协议流程:
  * 1. TCP:4646 连接 → 等待 banner (CMD:0)
- * 2. CMD:94 fire-and-forget (绑定 UDP 端口，不等响应)
+ * 2. CMD:94 fire-and-forget (绑定 UDP 端口)
  * 3. CMD:2 等响应 (开启视频预览)
- * 4. CMD:116 fire-and-forget (TCP 通知，不等响应)
+ * 4. CMD:116 fire-and-forget (TCP 通知)
  * 5. 启动 UDP:1563 → D8 C0 D9 握手
  * 6. RTP/H.264 → 去包化 → 解码 → 渲染
  */
@@ -55,6 +56,7 @@ public class H8PlayActivity extends BaseActivity
     private Button mBtnStop;
     private Button mBtnCamera;
     private Button mBtnLog;
+    private Button mBtnCopy;
     private TextView mTvLog;
     private ScrollView mLogContainer;
 
@@ -146,6 +148,7 @@ public class H8PlayActivity extends BaseActivity
         mBtnStop = (Button) findViewById(R.id.h8_btn_stop);
         mBtnCamera = (Button) findViewById(R.id.h8_btn_camera);
         mBtnLog = (Button) findViewById(R.id.h8_btn_log);
+        mBtnCopy = (Button) findViewById(R.id.h8_btn_copy);
         mTvLog = (TextView) findViewById(R.id.h8_tv_log);
         mLogContainer = (ScrollView) findViewById(R.id.h8_log_container);
 
@@ -185,18 +188,19 @@ public class H8PlayActivity extends BaseActivity
             }
         });
 
-        // 日志切换按钮: 单击 = 切换显示/隐藏, 长按 = 导出剪切板
+        // LOG 按钮: 单击 = 切换日志显示/隐藏
         mBtnLog.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 toggleLog();
             }
         });
-        mBtnLog.setOnLongClickListener(new View.OnLongClickListener() {
+
+        // COPY 按钮: 一键导出全部日志到剪切板
+        mBtnCopy.setOnClickListener(new View.OnClickListener() {
             @Override
-            public boolean onLongClick(View v) {
+            public void onClick(View v) {
                 exportLog();
-                return true;
             }
         });
 
@@ -272,7 +276,7 @@ public class H8PlayActivity extends BaseActivity
         new Thread("H8Activate") {
             @Override
             public void run() {
-                appendLog("========== v0.0.102 视频激活序列 ==========");
+                appendLog("========== v0.0.103 视频激活序列 ==========");
 
                 // === Step 1: CMD:94 fire-and-forget (绑定 UDP 端口) ===
                 // v0.0.102: 不等待响应，避免 3s 超时阻塞
@@ -314,23 +318,22 @@ public class H8PlayActivity extends BaseActivity
 
                 startUdpVideo();
 
-                // === Step 5: 5秒后检查是否收到视频，如果没有则重试 CMD:2 ===
-                try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
-                if (mStreaming && mFrameCount == 0) {
-                    appendLog("[RETRY] 5秒未收到视频帧，尝试重新激活...");
-                    appendLog("[RETRY] 重新发送 CMD:2...");
-                    mTcpManager.sendCommand(H8Constants.Command.VID_ENC_PREVIEW_ON, "");
-
-                    // 也重新发送握手
-                    try { Thread.sleep(500); } catch (InterruptedException ignored) {}
-                    appendLog("[RETRY] 重新发送 CMD:94...");
-                    mTcpManager.sendCommand(H8Constants.Command.CMD_BIND_APP_UDP, "1563");
-
-                    try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
-                    if (mFrameCount == 0) {
-                        appendLog("[RETRY] 仍未收到视频，尝试策略B: 纯 CMD:2...");
-                        mTcpManager.sendCommand(H8Constants.Command.VID_ENC_PREVIEW_ON, "");
+                // === Step 5: 周期性检查是否收到视频 ===
+                for (int retry = 1; retry <= 3 && mStreaming; retry++) {
+                    try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
+                    if (!mStreaming) break;
+                    if (mFrameCount > 0) {
+                        appendLog("[CHECK] 第" + retry + "次检查: 已收到 " + mFrameCount + " 帧 ✓");
+                        break;
                     }
+                    appendLog("[RETRY] 第" + retry + "次: 5秒未收到视频帧，重试...");
+                    mTcpManager.sendCommand(H8Constants.Command.VID_ENC_PREVIEW_ON, "");
+                    try { Thread.sleep(300); } catch (InterruptedException ignored) {}
+                    mTcpManager.sendCommand(H8Constants.Command.CMD_BIND_APP_UDP, "1563");
+                }
+                if (mStreaming && mFrameCount == 0) {
+                    appendLog("[WARN] 3次重试后仍未收到视频帧");
+                    appendLog("[HINT] 请用COPY按钮导出日志，检查UDP连接状态");
                 }
             }
         }.start();
@@ -640,16 +643,36 @@ public class H8PlayActivity extends BaseActivity
 
     // ======================== H8UdpVideoCallback 实现 ========================
 
+    /** UDP 接收统计 */
+    private int mUdpPacketCount = 0;
+    private long mUdpLastStatTime = 0;
+
     @Override
     public void onUdpVideoData(byte[] data, int length) {
-        // 收到 UDP 视频包 -> RTP 去包化 -> 提取 NAL 单元 -> 送入解码器
         if (length <= 0 || !mStreaming) return;
 
+        mUdpPacketCount++;
+
+        // 每100包输出统计
+        if (mUdpPacketCount % 100 == 0) {
+            long now = System.currentTimeMillis();
+            long elapsed = now - mUdpLastStatTime;
+            if (mUdpLastStatTime > 0 && elapsed > 0) {
+                final int pkts = mUdpPacketCount;
+                final float rate = pkts * 1000f / elapsed;
+                runOnUiThread(new Runnable() {
+                    @Override
+                    public void run() {
+                        appendLog("[UDP] 收到 " + pkts + " 包, " + String.format("%.1f", rate) + " 包/秒");
+                    }
+                });
+            }
+            mUdpLastStatTime = now;
+        }
+
         try {
-            // RTP 去包化，提取 H.264 NAL 单元
             byte[] nalUnit = mRtpDepacketizer.parseRtpPacket(data, length);
             if (nalUnit != null && nalUnit.length > 0) {
-                // 送入解码器
                 mVideoDecoder.offerData(nalUnit);
             }
         } catch (Exception e) {
@@ -659,6 +682,7 @@ public class H8PlayActivity extends BaseActivity
 
     @Override
     public void onFirstFrame() {
+        mUdpLastStatTime = System.currentTimeMillis();
         Log.d(TAG, "收到第一帧 UDP 视频数据");
         runOnUiThread(new Runnable() {
             @Override
@@ -667,6 +691,12 @@ public class H8PlayActivity extends BaseActivity
                 updateStatus("视频流接收中 - OK");
             }
         });
+    }
+
+    /** v0.0.103: UDP 诊断日志回调 */
+    @Override
+    public void onUdpLog(String message) {
+        appendLog(message);
     }
 
     // ======================== H8DecoderCallback 实现 ========================
