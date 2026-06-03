@@ -10,6 +10,9 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 
 import com.aicontrol.android.R;
 import com.aicontrol.android.aircam.base.BaseActivity;
@@ -20,36 +23,22 @@ import java.util.Date;
 import java.util.Locale;
 
 /**
- * H8 无人机视频播放主界面 v0.0.99
+ * H8 无人机视频播放主界面 v0.0.102
  *
- * 修复 v0.0.98 的核心问题:
- * - v0.0.98 缺少 CMD:94 (绑定 UDP 端口) 和 CMD:2 (视频激活) 命令
- * - 导致 UDP:1563 端口始终 ICMP 不可达
+ * v0.0.102 修复:
+ * - CMD:94/CMD:116 超时不阻塞: 改为 fire-and-forget 发送
+ * - 移除自动二进制握手探索 (可选手动触发)
+ * - CMD:2 成功后立即启动 UDP，不等待 CMD:94/116
+ * - 新增日志一键导出剪切板 (LOG 按钮长按)
+ * - 增加多种激活策略，自动重试
  *
- * v0.0.99 正确协议流程:
- * 1. TCP:4646 连接 → 等待服务器推送 banner (CMD:0)
- * 2. 收到 banner → 发 CMD:94 PARAM="1563" (绑定 UDP 端口) → 等响应
- * 3. 发 CMD:2 PARAM="" (开启视频编码预览) → 等响应
- * 4. 发 CMD:116 PARAM="" (TCP 已连接通知) → 等响应
- * 5. 启动 UDP:1563 接收线程 → 发 D8 C0 D9 握手
- * 6. 接收 H264 RTP → 去包化 → 解码 → 渲染
- *
- * 新增功能:
- * - 前后摄像头切换 (CMD:20)
- * - TCP:7070 备选视频通道探测
- * - 完整协议序列同步执行
- *
- * 架构:
- * <pre>
- *   H8PlayActivity
- *     ├── H8TcpManager      (TCP 4646 控制通道)
- *     │     └── H8TcpObserver (本类实现)
- *     ├── H8UdpVideoThread   (UDP 1563 视频接收)
- *     │     └── H8UdpVideoCallback (本类实现)
- *     ├── H8RtpDepacketizer  (RTP/H.264 去包化)
- *     └── H8VideoDecoder     (MediaCodec H.264 解码)
- *           └── H8DecoderCallback (本类实现)
- * </pre>
+ * 协议流程:
+ * 1. TCP:4646 连接 → 等待 banner (CMD:0)
+ * 2. CMD:94 fire-and-forget (绑定 UDP 端口，不等响应)
+ * 3. CMD:2 等响应 (开启视频预览)
+ * 4. CMD:116 fire-and-forget (TCP 通知，不等响应)
+ * 5. 启动 UDP:1563 → D8 C0 D9 握手
+ * 6. RTP/H.264 → 去包化 → 解码 → 渲染
  */
 public class H8PlayActivity extends BaseActivity
         implements H8TcpObserver, H8UdpVideoThread.H8UdpVideoCallback, H8VideoDecoder.H8DecoderCallback, SurfaceHolder.Callback {
@@ -102,6 +91,9 @@ public class H8PlayActivity extends BaseActivity
     /** 日志时间格式 */
     private final SimpleDateFormat mLogTimeFormat =
             new SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault());
+
+    /** 日志全量文本 (用于导出剪切板) */
+    private final StringBuilder mFullLogText = new StringBuilder();
 
     // ======================== 生命周期 ========================
 
@@ -193,11 +185,18 @@ public class H8PlayActivity extends BaseActivity
             }
         });
 
-        // 日志切换按钮
+        // 日志切换按钮: 单击 = 切换显示/隐藏, 长按 = 导出剪切板
         mBtnLog.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 toggleLog();
+            }
+        });
+        mBtnLog.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                exportLog();
+                return true;
             }
         });
 
@@ -252,16 +251,17 @@ public class H8PlayActivity extends BaseActivity
     // ======================== 视频激活 (v0.0.99 核心) ========================
 
     /**
-     * v0.0.99: 完整的视频激活序列
+     * v0.0.102: 视频激活序列 (优化版)
      *
-     * 必须在后台线程中执行（sendCommandAndWait 是阻塞的）
+     * v0.0.101 问题: CMD:94 和 CMD:116 超时阻塞 3s+2s=5s，
+     *   二进制握手探索可能扰乱无人机协议状态机
      *
-     * v0.0.100 增强版:
-     * 1. 二进制握手探索 — 分析 TCP 4646 上的 challenge-response
-     * 2. CMD:94 PARAM="1563" — 绑定 APP 的 UDP 端口
-     * 3. CMD:2 PARAM="" — 开启视频编码预览
-     * 4. CMD:116 PARAM="" — 通知 TCP 已连接
-     * 5. 尝试多种组合策略
+     * v0.0.102 策略:
+     * - 二进制握手探索移除 (不再自动执行)
+     * - CMD:94 fire-and-forget: 发送但不等响应
+     * - CMD:2 等响应: 这是唯一需要确认的命令
+     * - CMD:116 fire-and-forget: 发送但不等响应
+     * - CMD:2 成功后立即启动 UDP，不浪费时间
      */
     private void activateVideoStream() {
         if (!mTcpConnected || !mTcpManager.isBannerReceived()) {
@@ -272,27 +272,16 @@ public class H8PlayActivity extends BaseActivity
         new Thread("H8Activate") {
             @Override
             public void run() {
-                appendLog("========== v0.0.100 视频激活序列 ==========");
+                appendLog("========== v0.0.102 视频激活序列 ==========");
 
-                // === Phase 1: 二进制握手探索 ===
-                // 发现: 发送任意二进制数据到 TCP:4646 会收到 16B 响应
-                // 这可能是 challenge-response 认证机制
-                appendLog("[PHASE1] 二进制握手探索...");
-                exploreBinaryHandshake();
-
-                // === Phase 2: JSON 命令序列 ===
-                appendLog("[PHASE2] JSON 命令序列...");
-
-                // Step 1: CMD:94 — 绑定 APP 的 UDP 端口
-                appendLog("[CMD] 发送 CMD:94 (绑定UDP端口 1563)...");
-                H8TcpManager.H8CommandResult r94 = mTcpManager.sendCommandAndWait(
-                        94, H8Constants.Command.CMD_BIND_APP_UDP, "1563", 3000
-                );
-                appendLog("[CMD] CMD:94 响应: " + r94);
-
+                // === Step 1: CMD:94 fire-and-forget (绑定 UDP 端口) ===
+                // v0.0.102: 不等待响应，避免 3s 超时阻塞
+                appendLog("[CMD] 发送 CMD:94 (绑定UDP端口, fire-and-forget)...");
+                mTcpManager.sendCommand(H8Constants.Command.CMD_BIND_APP_UDP, "1563");
                 try { Thread.sleep(500); } catch (InterruptedException ignored) {}
 
-                // Step 2: CMD:2 — 开启视频编码预览
+                // === Step 2: CMD:2 等响应 (开启视频预览) ===
+                // 这是核心命令，必须确认成功
                 appendLog("[CMD] 发送 CMD:2 (开启视频预览)...");
                 H8TcpManager.H8CommandResult r2 = mTcpManager.sendCommandAndWait(
                         2, H8Constants.Command.VID_ENC_PREVIEW_ON, "", 3000
@@ -305,24 +294,44 @@ public class H8PlayActivity extends BaseActivity
                             2, H8Constants.Command.VID_ENC_PREVIEW_ON, "", 3000
                     );
                     appendLog("[CMD] CMD:2 重试: " + r2r);
+
+                    if (r2r.isTimeout()) {
+                        appendLog("[ACTIVATE] CMD:2 两次超时，放弃激活");
+                        return;
+                    }
                 }
 
+                // === Step 3: CMD:116 fire-and-forget (TCP连接通知) ===
                 try { Thread.sleep(300); } catch (InterruptedException ignored) {}
+                appendLog("[CMD] 发送 CMD:116 (TCP连接通知, fire-and-forget)...");
+                mTcpManager.sendCommand(H8Constants.Command.CMD_TCP_CONNECTED, "");
 
-                // Step 3: CMD:116 — TCP 连接已建立通知
-                appendLog("[CMD] 发送 CMD:116 (TCP连接通知)...");
-                H8TcpManager.H8CommandResult r116 = mTcpManager.sendCommandAndWait(
-                        116, H8Constants.Command.CMD_TCP_CONNECTED, "", 2000
-                );
-                appendLog("[CMD] CMD:116 响应: " + r116);
-
-                // === Phase 3: 等待 + 尝试 UDP ===
-                try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
+                // === Step 4: 立即启动 UDP ===
+                try { Thread.sleep(500); } catch (InterruptedException ignored) {}
 
                 mVideoActivated = true;
                 appendLog("[ACTIVATE] ★ 激活序列完成，启动 UDP 接收");
 
                 startUdpVideo();
+
+                // === Step 5: 5秒后检查是否收到视频，如果没有则重试 CMD:2 ===
+                try { Thread.sleep(5000); } catch (InterruptedException ignored) {}
+                if (mStreaming && mFrameCount == 0) {
+                    appendLog("[RETRY] 5秒未收到视频帧，尝试重新激活...");
+                    appendLog("[RETRY] 重新发送 CMD:2...");
+                    mTcpManager.sendCommand(H8Constants.Command.VID_ENC_PREVIEW_ON, "");
+
+                    // 也重新发送握手
+                    try { Thread.sleep(500); } catch (InterruptedException ignored) {}
+                    appendLog("[RETRY] 重新发送 CMD:94...");
+                    mTcpManager.sendCommand(H8Constants.Command.CMD_BIND_APP_UDP, "1563");
+
+                    try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
+                    if (mFrameCount == 0) {
+                        appendLog("[RETRY] 仍未收到视频，尝试策略B: 纯 CMD:2...");
+                        mTcpManager.sendCommand(H8Constants.Command.VID_ENC_PREVIEW_ON, "");
+                    }
+                }
             }
         }.start();
     }
@@ -808,7 +817,7 @@ public class H8PlayActivity extends BaseActivity
     }
 
     /**
-     * 追加日志到日志区域
+     * 追加日志到日志区域 (同时记录到 mFullLogText 用于导出)
      */
     private void appendLog(final String text) {
         final String timestamp = mLogTimeFormat.format(new Date());
@@ -816,12 +825,25 @@ public class H8PlayActivity extends BaseActivity
 
         Log.d(TAG, "LOG: " + text);
 
+        // 全量记录 (用于导出剪切板，不受500行限制)
+        synchronized (mFullLogText) {
+            mFullLogText.append(logLine);
+            // 防止内存溢出，限制 50KB
+            if (mFullLogText.length() > 50000) {
+                String full = mFullLogText.toString();
+                int cut = full.indexOf('\n', 10000);
+                if (cut > 0) {
+                    mFullLogText.delete(0, cut + 1);
+                }
+            }
+        }
+
         runOnUiThread(new Runnable() {
             @Override
             public void run() {
                 if (mTvLog != null) {
                     mTvLog.append(logLine);
-                    // 限制日志长度 (最多 500 行)
+                    // 限制屏幕日志长度 (最多 500 行)
                     if (mTvLog.getLineCount() > 500) {
                         CharSequence cs = mTvLog.getText();
                         int start = 0;
@@ -877,16 +899,23 @@ public class H8PlayActivity extends BaseActivity
     }
 
     /**
-     * 导出日志内容到剪贴板
+     * 导出日志内容到剪贴板 (长按 LOG 按钮触发)
      */
     private void exportLog() {
-        if (mTvLog != null && mTvLog.getText().length() > 0) {
-            String logText = mTvLog.getText().toString();
-            android.content.ClipboardManager clipboard =
-                    (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            android.content.ClipData clip = android.content.ClipData.newPlainText("H8 Log", logText);
-            clipboard.setPrimaryClip(clip);
-            appendLog("★ 日志已复制到剪贴板");
+        String logText = mFullLogText.toString();
+        if (logText.isEmpty()) {
+            logText = mTvLog != null ? mTvLog.getText().toString() : "";
         }
+        if (logText.isEmpty()) {
+            Toast.makeText(this, "日志为空", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        ClipData clip = ClipData.newPlainText("H8 Drone Log", logText);
+        clipboard.setPrimaryClip(clip);
+
+        appendLog("★ 日志已复制到剪贴板 (" + logText.length() + " 字符)");
+        Toast.makeText(this, "日志已复制到剪贴板", Toast.LENGTH_SHORT).show();
     }
 }
