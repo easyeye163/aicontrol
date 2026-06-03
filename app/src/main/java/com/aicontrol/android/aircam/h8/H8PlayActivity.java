@@ -23,7 +23,12 @@ import java.util.Date;
 import java.util.Locale;
 
 /**
- * H8 无人机视频播放主界面 v0.0.103
+ * H8 无人机视频播放主界面 v0.0.104
+ *
+ * v0.0.104 核心修复:
+ * - UDP socket: 只 bind 不 connect，从任意源接收
+ * - 修复 ICMP Port Unreachable 导致 socket 关闭
+ * - UDP 握手用 sendTo 代替 connected socket
  *
  * v0.0.103 变更:
  * - LOG 旁新增 COPY 按钮: 一键导出全部日志到剪切板
@@ -276,7 +281,7 @@ public class H8PlayActivity extends BaseActivity
         new Thread("H8Activate") {
             @Override
             public void run() {
-                appendLog("========== v0.0.103 视频激活序列 ==========");
+                appendLog("========== v0.0.104 视频激活序列 ==========");
 
                 // === Step 1: CMD:94 fire-and-forget (绑定 UDP 端口) ===
                 // v0.0.102: 不等待响应，避免 3s 超时阻塞

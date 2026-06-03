@@ -7,21 +7,23 @@ import java.net.DatagramSocket;
 import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.net.SocketTimeoutException;
+import java.net.PortUnreachableException;
 
 /**
- * H8 无人机 UDP 视频接收线程 v0.0.103
+ * H8 无人机 UDP 视频接收线程 v0.0.104
  *
- * v0.0.103 增强:
- * - 详细的连接诊断日志 (socket创建/绑定/握手/超时)
- * - 超时从 3s 改为 2s (更快检测无数据)
- * - 超时计数日志 (记录连续超时次数)
- * - 通过 callback 通知上层日志消息
+ * v0.0.104 核心修复:
+ * - 只 bind 不 connect: 无人机主动推送视频到 APP 的 1563 端口
+ * - 从任意来源接收 (无人机可能从不同端口发送)
+ * - ICMP Port Unreachable 不再导致 socket 关闭
+ * - 记录首个数据包的来源地址和端口
+ * - 握手用 sendTo 而非通过 connected socket 发送
  *
- * 工作流程:
- * 1. 绑定本地 UDP 端口 1563
- * 2. 连接 (connect) 到无人机 192.168.100.1:1563
- * 3. 发送 3 字节握手魔数: D8 C0 D9
- * 4. 开始接收 RTP/H.264 视频数据包
+ * 协议模型 (修正):
+ * - APP 绑定本地 UDP 1563 端口
+ * - CMD:94 告诉无人机 "APP 在 1563 端口接收"
+ * - 无人机开始发送 RTP/H.264 到 APP:1563
+ * - APP 从任意源接收 (不限定 drone 端口)
  */
 public class H8UdpVideoThread {
 
@@ -29,29 +31,21 @@ public class H8UdpVideoThread {
 
     /** UDP 视频数据回调接口 */
     public interface H8UdpVideoCallback {
-
         void onUdpVideoData(byte[] data, int length);
-
         void onFirstFrame();
-
         /** v0.0.103: UDP 诊断日志回调 */
         void onUdpLog(String message);
     }
 
-    /** 接收回调 */
     private H8UdpVideoCallback mCallback;
-
-    /** UDP 套接字 */
     private DatagramSocket mSocket;
-
-    /** 接收线程 */
     private volatile Thread mRecvThread;
-
-    /** 是否停止标志 */
     private volatile boolean mRunning = false;
-
-    /** 是否已收到过第一帧 */
     private volatile boolean mFirstFrameReceived = false;
+
+    /** 首个数据包来源地址 (无人机可能从非1563端口发送) */
+    private volatile String mSourceAddress = null;
+    private volatile int mSourcePort = 0;
 
     public H8UdpVideoThread(H8UdpVideoCallback callback) {
         this.mCallback = callback;
@@ -67,6 +61,8 @@ public class H8UdpVideoThread {
 
         mRunning = true;
         mFirstFrameReceived = false;
+        mSourceAddress = null;
+        mSourcePort = 0;
 
         mRecvThread = new Thread("H8UdpRecv") {
             @Override
@@ -89,7 +85,6 @@ public class H8UdpVideoThread {
         }
 
         closeSocket();
-
         Log.d(TAG, "UDP 视频接收线程已停止");
     }
 
@@ -97,24 +92,16 @@ public class H8UdpVideoThread {
         return mRunning;
     }
 
-    // ======================== Socket 管理 ========================
-
     private void closeSocket() {
         if (mSocket != null && !mSocket.isClosed()) {
-            try {
-                mSocket.close();
-            } catch (Exception ignored) {
-            }
+            try { mSocket.close(); } catch (Exception ignored) {}
             mSocket = null;
         }
     }
 
-    /** 发送诊断日志到回调 */
     private void logDiag(String msg) {
         Log.d(TAG, msg);
-        if (mCallback != null) {
-            mCallback.onUdpLog(msg);
-        }
+        if (mCallback != null) mCallback.onUdpLog(msg);
     }
 
     // ======================== 接收循环 ========================
@@ -124,64 +111,66 @@ public class H8UdpVideoThread {
             try {
                 createSocket();
                 sendHandshake();
-
-                logDiag("[UDP] 握手已发送，等待视频数据...");
-
+                logDiag("[UDP] 握手已发送，等待视频数据 (从任意源接收)...");
                 doReceive();
-
             } catch (SocketException e) {
                 if (!mRunning) break;
                 logDiag("[UDP] Socket 异常: " + e.getMessage());
             } catch (Exception e) {
                 if (!mRunning) break;
-                logDiag("[UDP] 接收异常: " + e.getMessage());
+                logDiag("[UDP] 异常: " + e.getMessage());
             } finally {
                 closeSocket();
             }
 
             if (mRunning) {
-                try {
-                    Thread.sleep(H8Constants.HANDSHAKE_RETRY_DELAY_MS);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    break;
-                }
+                try { Thread.sleep(H8Constants.HANDSHAKE_RETRY_DELAY_MS); }
+                catch (InterruptedException e) { Thread.currentThread().interrupt(); break; }
             }
         }
     }
 
     /**
-     * 创建 UDP 套接字并配置参数
+     * v0.0.104: 只 bind 本地端口，不 connect 到无人机
+     *
+     * 之前: socket.bind(1563) + socket.connect(drone:1563)
+     *   → 导致 ICMP Port Unreachable (无人机不在 1563 监听)
+     *
+     * 现在: socket.bind(0.0.0.0:1563)，从任意来源接收
+     *   → 无人机主动推送到 APP:1563，APP 接收即可
      */
     private void createSocket() throws SocketException {
-        logDiag("[UDP] 创建 socket, 绑定端口 " + H8Constants.UDP_VIDEO_PORT + "...");
+        logDiag("[UDP] 创建 socket, 绑定本地端口 " + H8Constants.UDP_VIDEO_PORT + " (不连接远端)...");
 
         mSocket = new DatagramSocket(null);
         mSocket.setReuseAddress(true);
-        mSocket.bind(new InetSocketAddress(H8Constants.UDP_VIDEO_PORT));
-        // v0.0.103: 超时从 3s 改为 2s
+        // v0.0.104: 绑定到 0.0.0.0:1563，接收来自任意地址的数据包
+        mSocket.bind(new InetSocketAddress("0.0.0.0", H8Constants.UDP_VIDEO_PORT));
         mSocket.setSoTimeout(2000);
         mSocket.setBroadcast(true);
-        mSocket.connect(new InetSocketAddress(H8Constants.DRONE_IP, H8Constants.UDP_VIDEO_PORT));
+        // v0.0.104: 不调用 socket.connect()！
 
-        int localPort = mSocket.getLocalPort();
-        logDiag("[UDP] socket 已就绪: local=" + localPort + " → " + H8Constants.DRONE_IP + ":" + H8Constants.UDP_VIDEO_PORT);
+        logDiag("[UDP] socket 已绑定: local=0.0.0.0:" + mSocket.getLocalPort()
+                + ", 等待无人机推送到此端口");
     }
 
     /**
-     * 发送 3 字节握手魔数到无人机
+     * v0.0.104: 用 sendTo 发送握手到无人机 (不依赖 connect)
      */
     private void sendHandshake() throws Exception {
         DatagramPacket handshakePacket = new DatagramPacket(
                 H8Constants.HANDSHAKE_MAGIC,
-                H8Constants.HANDSHAKE_MAGIC.length
+                H8Constants.HANDSHAKE_MAGIC.length,
+                new InetSocketAddress(H8Constants.DRONE_IP, H8Constants.UDP_VIDEO_PORT)
         );
         mSocket.send(handshakePacket);
-        logDiag("[UDP] 握手魔数已发送: D8 C0 D9 (3 bytes)");
+        logDiag("[UDP] 握手魔数已发送到 " + H8Constants.DRONE_IP + ":"
+                + H8Constants.UDP_VIDEO_PORT + " → D8 C0 D9");
     }
 
     /**
      * 接收数据包循环
+     * v0.0.104: 接收来自任意源的数据包，记录实际来源
      */
     private void doReceive() {
         byte[] buffer = new byte[H8Constants.RECEIVE_BUFFER_SIZE];
@@ -199,49 +188,70 @@ public class H8UdpVideoThread {
                 timeoutCount = 0;
                 totalPackets++;
 
-                // 首包日志
+                // 首包: 记录实际来源
                 if (totalPackets == 1) {
-                    logDiag("[UDP] ✓ 收到首个数据包! 大小=" + length + "B, 来自=" + packet.getAddress().getHostAddress() + ":" + packet.getPort());
+                    mSourceAddress = packet.getAddress().getHostAddress();
+                    mSourcePort = packet.getPort();
+                    logDiag("[UDP] ✓ 首包到达! 来源=" + mSourceAddress + ":" + mSourcePort
+                            + ", 大小=" + length + "B");
+                }
+
+                // 每500包输出统计
+                if (totalPackets % 500 == 0) {
+                    logDiag("[UDP] 已接收 " + totalPackets + " 包 (来源="
+                            + mSourceAddress + ":" + mSourcePort + ", 最新 " + length + "B)");
                 }
 
                 // 通知第一帧
                 if (!mFirstFrameReceived) {
                     mFirstFrameReceived = true;
-                    Log.d(TAG, "收到第一帧 UDP 视频数据，长度: " + length);
-                    if (mCallback != null) {
-                        mCallback.onFirstFrame();
-                    }
+                    Log.d(TAG, "收到第一帧 UDP 视频数据");
+                    if (mCallback != null) mCallback.onFirstFrame();
                 }
 
-                // 每500包输出一次诊断
-                if (totalPackets % 500 == 0) {
-                    logDiag("[UDP] 已接收 " + totalPackets + " 包 (最新 " + length + "B)");
-                }
-
-                // 回调通知视频数据
-                if (mCallback != null) {
-                    mCallback.onUdpVideoData(buffer, length);
-                }
+                // 回调
+                if (mCallback != null) mCallback.onUdpVideoData(buffer, length);
 
             } catch (SocketTimeoutException e) {
                 timeoutCount++;
-                // v0.0.103: 每3次超时输出一次日志 (避免刷屏)
                 if (timeoutCount <= 3 || timeoutCount % 3 == 0) {
-                    logDiag("[UDP] 接收超时 (" + timeoutCount + " 次, 已收 " + totalPackets + " 包)");
+                    logDiag("[UDP] 接收超时 (" + timeoutCount + "次, 已收 " + totalPackets + " 包)");
                 }
-                // 连续10次超时 (20s无数据) 日志警告
                 if (timeoutCount == 10) {
-                    logDiag("[UDP] ⚠ 连续20秒无数据, 可能UDP未建立");
+                    logDiag("[UDP] ⚠ 连续20秒无数据");
+                }
+            } catch (PortUnreachableException e) {
+                // v0.0.104: ICMP Port Unreachable 不再致命，只记录
+                timeoutCount++;
+                if (timeoutCount <= 2) {
+                    logDiag("[UDP] ICMP Port Unreachable (无人机未在此端口监听, 继续等待...)");
                 }
             } catch (SocketException e) {
                 if (!mRunning) break;
-                logDiag("[UDP] Socket 异常: " + e.getMessage());
+                String msg = e.getMessage();
+                if (msg != null && msg.contains("Port unreachable")) {
+                    timeoutCount++;
+                    if (timeoutCount <= 2) {
+                        logDiag("[UDP] ICMP Port Unreachable (继续等待...)");
+                    }
+                } else {
+                    logDiag("[UDP] Socket 异常: " + msg);
+                    break;
+                }
             } catch (Exception e) {
                 if (!mRunning) break;
-                logDiag("[UDP] 接收异常: " + e.getMessage());
+                logDiag("[UDP] 异常: " + e.getMessage());
             }
         }
 
-        logDiag("[UDP] 接收循环结束, 共 " + totalPackets + " 包");
+        logDiag("[UDP] 接收循环结束, 共 " + totalPackets + " 包"
+                + (mSourceAddress != null ? " (来源=" + mSourceAddress + ":" + mSourcePort + ")" : ""));
+    }
+
+    /**
+     * @return 首个数据包的来源地址 (无人机实际发送端口)
+     */
+    public String getSourceInfo() {
+        return mSourceAddress != null ? mSourceAddress + ":" + mSourcePort : "无";
     }
 }
