@@ -24,6 +24,7 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_NETWORK" />
 
     <!-- Device features -->
     <uses-feature
@@ -241,6 +242,18 @@
             android:name=".ui.tcpdump.TcpDumpActivity"
             android:exported="false"
             android:screenOrientation="portrait" />
+
+        <!-- VPN 抓包服务 -->
+        <service
+            android:name=".ui.tcpdump.PacketCaptureService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="network"
+            android:permission="android.permission.BIND_VPN_SERVICE">
+            <intent-filter>
+                <action android:name="android.net.VpnService" />
+            </intent-filter>
+        </service>
 
     </application>
 

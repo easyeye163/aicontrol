@@ -20,7 +20,7 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:gravity="center"
-        android:padding="20pt"
+        android:padding="16pt"
         android:background="@color/colorBgSecondary"
         android:layout_marginTop="12pt"
         app:layout_constraintTop_toBottomOf="@id/toolbar">
@@ -54,9 +54,9 @@
 
     </LinearLayout>
 
-    <!-- 接口选择 -->
+    <!-- IP 过滤 -->
     <LinearLayout
-        android:id="@+id/layoutInterface"
+        android:id="@+id/layoutFilter"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
@@ -69,62 +69,37 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/tcpdump_interface_label"
+            android:text="@string/tcpdump_filter_ip_label"
             android:textColor="@color/colorTextPrimary"
             android:textSize="14sp" />
 
         <EditText
-            android:id="@+id/etInterface"
+            android:id="@+id/etFilterIp"
             android:layout_width="0dp"
             android:layout_height="40pt"
             android:layout_weight="1"
             android:layout_marginStart="12pt"
             android:background="@drawable/bg_input_field"
-            android:hint="@string/tcpdump_interface_hint"
+            android:hint="@string/tcpdump_filter_ip_hint"
             android:inputType="text"
             android:maxLines="1"
             android:paddingHorizontal="12pt"
-            android:text="any"
+            android:text=""
             android:textColor="@color/colorTextPrimary"
             android:textSize="13sp" />
 
     </LinearLayout>
 
-    <!-- 过滤器表达式 -->
-    <LinearLayout
-        android:id="@+id/layoutFilter"
+    <!-- 提示信息 -->
+    <TextView
+        android:id="@+id/tvHint"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:padding="16pt"
-        android:background="@color/colorBgSecondary"
-        android:layout_marginTop="12pt"
-        app:layout_constraintTop_toBottomOf="@id/layoutInterface">
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/tcpdump_filter_label"
-            android:textColor="@color/colorTextPrimary"
-            android:textSize="14sp" />
-
-        <EditText
-            android:id="@+id/etFilter"
-            android:layout_width="0dp"
-            android:layout_height="40pt"
-            android:layout_weight="1"
-            android:layout_marginStart="12pt"
-            android:background="@drawable/bg_input_field"
-            android:hint="@string/tcpdump_filter_hint"
-            android:inputType="text"
-            android:maxLines="1"
-            android:paddingHorizontal="12pt"
-            android:text="tcp port 80 or tcp port 443"
-            android:textColor="@color/colorTextPrimary"
-            android:textSize="13sp" />
-
-    </LinearLayout>
+        android:layout_marginTop="8pt"
+        android:text="@string/tcpdump_hint"
+        android:textColor="@color/colorTextTertiary"
+        android:textSize="11sp"
+        app:layout_constraintTop_toBottomOf="@id/layoutFilter" />
 
     <!-- 抓包输出日志 -->
     <ScrollView
@@ -132,8 +107,8 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:background="@color/colorBgSecondary"
-        android:layout_marginTop="12pt"
-        app:layout_constraintTop_toBottomOf="@id/layoutFilter"
+        android:layout_marginTop="8pt"
+        app:layout_constraintTop_toBottomOf="@id/tvHint"
         app:layout_constraintBottom_toTopOf="@id/layoutButtons">
 
         <TextView
