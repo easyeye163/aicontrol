@@ -36,6 +36,40 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      - name: Fix Maven repos for GitHub Actions
+        run: |
+          sed -i 's|maven(url = "https://maven.aliyun.com/repository/public")|maven(url = "https://maven.aliyun.com/repository/public")\n            // aliyun mirror disabled for CI, fallback below\n        // |g' settings.gradle.kts || true
+          # Overwrite settings.gradle.kts to use reliable repos in CI
+          cat > settings.gradle.kts << 'EOF'
+          pluginManagement {
+              repositories {
+                  google {
+                      content {
+                          includeGroupByRegex("com\\.android.*")
+                          includeGroupByRegex("com\\.google.*")
+                          includeGroupByRegex("androidx.*")
+                      }
+                  }
+                  mavenCentral()
+                  gradlePluginPortal()
+                  maven(url = "https://jitpack.io")
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+                  maven(url = "https://jitpack.io")
+                  // aliyun as fallback
+                  maven(url = "https://maven.aliyun.com/repository/public")
+              }
+          }
+
+          rootProject.name = "aicontrol"
+          include(":app")
+          EOF
+
       - name: Build Debug APK
         run: ./gradlew assembleDebug
 
