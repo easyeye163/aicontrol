@@ -24,7 +24,7 @@ class PcapWriter(private val file: File) {
      */
     private fun writeGlobalHeader() {
         // Magic Number (little-endian: 0xa1b2c3d4)
-        dos.writeInt(0xa1b2c3d4)
+        dos.writeInt(-0x5e4d3c2c) // 0xa1b2c3d4 as signed int
         // Major Version
         dos.writeShort(2)
         // Minor Version

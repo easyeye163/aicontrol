@@ -17,6 +17,7 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.nio.ByteBuffer
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -91,11 +92,11 @@ class PacketCaptureService : VpnService() {
 
         // 创建 PCAP 文件
         try {
-            val dir = File(getExternalFilesDir(null), "pcap")
+            val dir = java.io.File(getExternalFilesDir(null), "pcap")
             dir.mkdirs()
             val timestamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault())
                 .format(java.util.Date())
-            pcapFile = File(dir, "capture_$timestamp.pcap")
+            pcapFile = java.io.File(dir, "capture_$timestamp.pcap")
             pcapWriter = PcapWriter(pcapFile!!)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create PCAP file", e)
@@ -488,7 +489,7 @@ class PacketCaptureService : VpnService() {
                     pkt[26] = 0x00; pkt[27] = 0x01 // ack
                     pkt[28] = 0x50 // data offset=5
                     pkt[29] = 0x18 // PSH+ACK
-                    pkt[30] = 0xFFFF; pkt[31] = 0xFFFF // window
+                    pkt[30] = 0xFF.toByte(); pkt[31] = 0xFF.toByte() // window
                     pkt[32] = 0x00; pkt[33] = 0x00 // checksum
                     pkt[34] = 0x00; pkt[35] = 0x00 // urgent
 

@@ -98,7 +98,8 @@ class TcpDumpActivity : BaseActivity() {
         findViewById<CommonToolbar>(R.id.toolbar).apply {
             setTitleCentered(false)
             setTitle(getString(R.string.tcpdump_title))
-            setBackIcon(R.drawable.ic_back) { finish() }
+            setBackIcon(R.drawable.ic_back)
+            setNavigationOnClickListener { finish() }
         }
 
         tvStatus = findViewById(R.id.tvTcpdumpStatus)
