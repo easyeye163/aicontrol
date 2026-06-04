@@ -248,7 +248,7 @@
             android:name=".ui.tcpdump.PacketCaptureService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="network"
+            android:foregroundServiceType="specialUse"
             android:permission="android.permission.BIND_VPN_SERVICE">
             <intent-filter>
                 <action android:name="android.net.VpnService" />
