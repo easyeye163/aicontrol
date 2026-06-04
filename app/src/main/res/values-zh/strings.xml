@@ -251,6 +251,28 @@
     <string name="home_btn_skills">技能</string>
     <string name="home_btn_timeline">历史</string>
     <string name="home_btn_car">小车控制</string>
+    <string name="home_btn_tcpdump">抓包</string>
+
+    <!-- TcpDump 抓包 -->
+    <string name="tcpdump_title">TcpDump 抓包</string>
+    <string name="tcpdump_status_idle">空闲 - 未抓包</string>
+    <string name="tcpdump_status_capturing">正在抓包…</string>
+    <string name="tcpdump_packet_count_zero">已捕获: 0 个数据包</string>
+    <string name="tcpdump_packet_count">已捕获: %d 个数据包</string>
+    <string name="tcpdump_capture_time">抓包时长: %d分%02d秒</string>
+    <string name="tcpdump_interface_label">网卡:</string>
+    <string name="tcpdump_interface_hint">如 any, wlan0</string>
+    <string name="tcpdump_filter_label">过滤:</string>
+    <string name="tcpdump_filter_hint">如 tcp port 80</string>
+    <string name="tcpdump_start">开始抓包</string>
+    <string name="tcpdump_stop">停止抓包</string>
+    <string name="tcpdump_capture_started">tcpdump capture started…</string>
+    <string name="tcpdump_capture_started_toast">开始抓包</string>
+    <string name="tcpdump_already_running">抓包已在运行中</string>
+    <string name="tcpdump_not_found">未找到 tcpdump，请确保设备已安装 tcpdump 或已 Root</string>
+    <string name="tcpdump_no_root">需要 Root 权限才能使用 tcpdump</string>
+    <string name="tcpdump_start_failed">启动失败: %s</string>
+    <string name="tcpdump_capture_stopped">抓包已停止，文件: %s</string>
 
     <!-- 对话 -->
     <string name="chat_title">AI 对话</string>

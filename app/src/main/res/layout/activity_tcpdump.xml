@@ -1,0 +1,186 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/colorBgPrimary"
+    android:paddingHorizontal="16pt">
+
+    <com.aicontrol.android.widget.CommonToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="56pt"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- 状态面板 -->
+    <LinearLayout
+        android:id="@+id/layoutStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:padding="20pt"
+        android:background="@color/colorBgSecondary"
+        android:layout_marginTop="12pt"
+        app:layout_constraintTop_toBottomOf="@id/toolbar">
+
+        <TextView
+            android:id="@+id/tvTcpdumpStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/tcpdump_status_idle"
+            android:textColor="@color/colorTextPrimary"
+            android:textSize="14sp" />
+
+        <TextView
+            android:id="@+id/tvPacketCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8pt"
+            android:text="@string/tcpdump_packet_count_zero"
+            android:textColor="@color/colorTextSecondary"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvCaptureTime"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4pt"
+            android:textColor="@color/colorTextTertiary"
+            android:textSize="12sp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <!-- 接口选择 -->
+    <LinearLayout
+        android:id="@+id/layoutInterface"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="16pt"
+        android:background="@color/colorBgSecondary"
+        android:layout_marginTop="12pt"
+        app:layout_constraintTop_toBottomOf="@id/layoutStatus">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/tcpdump_interface_label"
+            android:textColor="@color/colorTextPrimary"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/etInterface"
+            android:layout_width="0dp"
+            android:layout_height="40pt"
+            android:layout_weight="1"
+            android:layout_marginStart="12pt"
+            android:background="@drawable/bg_input_field"
+            android:hint="@string/tcpdump_interface_hint"
+            android:inputType="text"
+            android:maxLines="1"
+            android:paddingHorizontal="12pt"
+            android:text="any"
+            android:textColor="@color/colorTextPrimary"
+            android:textSize="13sp" />
+
+    </LinearLayout>
+
+    <!-- 过滤器表达式 -->
+    <LinearLayout
+        android:id="@+id/layoutFilter"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="16pt"
+        android:background="@color/colorBgSecondary"
+        android:layout_marginTop="12pt"
+        app:layout_constraintTop_toBottomOf="@id/layoutInterface">
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/tcpdump_filter_label"
+            android:textColor="@color/colorTextPrimary"
+            android:textSize="14sp" />
+
+        <EditText
+            android:id="@+id/etFilter"
+            android:layout_width="0dp"
+            android:layout_height="40pt"
+            android:layout_weight="1"
+            android:layout_marginStart="12pt"
+            android:background="@drawable/bg_input_field"
+            android:hint="@string/tcpdump_filter_hint"
+            android:inputType="text"
+            android:maxLines="1"
+            android:paddingHorizontal="12pt"
+            android:text="tcp port 80 or tcp port 443"
+            android:textColor="@color/colorTextPrimary"
+            android:textSize="13sp" />
+
+    </LinearLayout>
+
+    <!-- 抓包输出日志 -->
+    <ScrollView
+        android:id="@+id/scrollOutput"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:background="@color/colorBgSecondary"
+        android:layout_marginTop="12pt"
+        app:layout_constraintTop_toBottomOf="@id/layoutFilter"
+        app:layout_constraintBottom_toTopOf="@id/layoutButtons">
+
+        <TextView
+            android:id="@+id/tvOutput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="12pt"
+            android:fontFamily="monospace"
+            android:textColor="@color/colorTextPrimary"
+            android:textSize="11sp"
+            android:textIsSelectable="true" />
+
+    </ScrollView>
+
+    <!-- 底部按钮 -->
+    <LinearLayout
+        android:id="@+id/layoutButtons"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginTop="12pt"
+        android:layout_marginBottom="12pt"
+        app:layout_constraintBottom_toBottomOf="parent">
+
+        <com.aicontrol.android.widget.KButton
+            android:id="@+id/btnStart"
+            android:layout_width="0dp"
+            android:layout_height="48pt"
+            android:layout_weight="1"
+            android:text="@string/tcpdump_start"
+            android:textSize="15sp"
+            app:btnBackground="@color/colorBrandPrimary"
+            app:btnTextColor="@color/colorBrandOnPrimary" />
+
+        <com.aicontrol.android.widget.KButton
+            android:id="@+id/btnStop"
+            android:layout_width="0dp"
+            android:layout_height="48pt"
+            android:layout_weight="1"
+            android:layout_marginStart="12pt"
+            android:text="@string/tcpdump_stop"
+            android:textSize="15sp"
+            android:enabled="false"
+            app:btnBackground="@color/colorErrorPrimary"
+            app:btnTextColor="@color/colorErrorOnPrimary" />
+
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

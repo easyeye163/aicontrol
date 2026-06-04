@@ -24,6 +24,7 @@ import com.aicontrol.android.ui.chat.ChatActivity
 import com.aicontrol.android.ui.skill.SkillManageActivity
 import com.aicontrol.android.ui.timeline.TimelineActivity
 import com.aicontrol.android.ui.car.CarControlActivity
+import com.aicontrol.android.ui.tcpdump.TcpDumpActivity
 import com.aicontrol.android.utils.KVUtils
 import com.aicontrol.android.widget.CommonToolbar
 import com.aicontrol.android.widget.PermissionCardView
@@ -128,6 +129,9 @@ class HomeActivity : BaseActivity() {
         }
         findViewById<View>(R.id.btnCar).setOnClickListener {
             startActivity(Intent(this, CarControlActivity::class.java))
+        }
+        findViewById<View>(R.id.btnTcpdump).setOnClickListener {
+            startActivity(Intent(this, TcpDumpActivity::class.java))
         }
 
         cardAccessibility = findViewById(R.id.cardAccessibility)

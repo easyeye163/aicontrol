@@ -131,15 +131,68 @@
 
     </LinearLayout>
 
+    <LinearLayout
+        android:id="+id/layoutQuickActions2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center"
+        android:layout_marginTop="8pt"
+        app:layout_constraintTop_toBottomOf="@id/layoutQuickActions">
+
+        <LinearLayout
+            android:id="@+id/btnTcpdump"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="12pt"
+            android:background="@color/colorBgSecondary">
+
+            <ImageView
+                android:layout_width="32pt"
+                android:layout_height="32pt"
+                android:src="@drawable/ic_tcpdump"
+                app:tint="@color/colorInfoPrimary" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6pt"
+                android:text="@string/home_btn_tcpdump"
+                android:textColor="@color/colorTextPrimary"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+        <View
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_weight="1" />
+
+    </LinearLayout>
+
     <com.aicontrol.android.widget.PermissionCardView
         android:id="@+id/cardAccessibility"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="16pt"
+        android:visibility="gone"
         app:cardIcon="@drawable/ic_accessibility"
         app:cardTitle="@string/home_card_accessibility_title"
         app:cardSubtitle="@string/home_card_accessibility_subtitle"
-        app:layout_constraintTop_toBottomOf="@id/layoutQuickActions" />
+        app:layout_constraintTop_toBottomOf="@id/layoutQuickActions2" />
 
     <com.aicontrol.android.widget.PermissionCardView
         android:id="@+id/cardNotification"
@@ -149,7 +202,7 @@
         app:cardIcon="@drawable/ic_notification"
         app:cardTitle="@string/home_card_notification_title"
         app:cardSubtitle="@string/home_card_notification_subtitle"
-        app:layout_constraintTop_toBottomOf="@id/cardAccessibility" />
+        app:layout_constraintTop_toBottomOf="@id/layoutQuickActions2" />
 
     <com.aicontrol.android.widget.PermissionCardView
         android:id="@+id/cardSystemWindow"

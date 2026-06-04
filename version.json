@@ -1,7 +1,7 @@
 {
-  "versionCode": 83,
-  "versionName": "v0.0.83",
-  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.83/AiControl-latest.apk",
-  "releaseNotes": "语音控制改为长按说话、松开自动识别",
-  "releaseDate": "2026-05-27"
+  "versionCode": 104,
+  "versionName": "v0.0.104",
+  "downloadUrl": "https://github.com/easyeye163/aicontrol/releases/download/v0.0.104/AiControl-latest.apk",
+  "releaseNotes": "新增 TcpDump 抓包工具，首页隐藏无障碍服务卡片",
+  "releaseDate": "2026-06-04"
 }
