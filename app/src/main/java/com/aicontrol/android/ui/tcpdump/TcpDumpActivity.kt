@@ -99,7 +99,7 @@ class TcpDumpActivity : BaseActivity() {
             setTitleCentered(false)
             setTitle(getString(R.string.tcpdump_title))
             setBackIcon(R.drawable.ic_back)
-            setNavigationOnClickListener { finish() }
+            showBackButton(true) { finish() }
         }
 
         tvStatus = findViewById(R.id.tvTcpdumpStatus)
