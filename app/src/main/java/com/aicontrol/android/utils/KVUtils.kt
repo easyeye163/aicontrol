@@ -368,4 +368,24 @@ object KVUtils {
     fun setCarKeywordRight(value: String) = putString(KEY_CAR_KW_RIGHT, value)
     fun getCarKeywordStop(): String = getString(KEY_CAR_KW_STOP, "停止")
     fun setCarKeywordStop(value: String) = putString(KEY_CAR_KW_STOP, value)
+
+    // ==================== 视频流协议 ====================
+    private const val KEY_STREAM_PROTOCOL = "KEY_STREAM_PROTOCOL"
+
+    /**
+     * 视频流协议类型
+     * 默认 "h264_raw"（H264裸流）
+     *
+     * 可选值（对应 StreamProtocol 枚举）：
+     *   h264_raw     - H264裸流
+     *   mjpeg        - MJPG压缩
+     *   openipc      - OpenIPC
+     *   h265_anjia   - H265安佳协议
+     *   h264_ws      - H264(WS)拉流
+     *   h264_dahua    - H264大华/熊迈协议
+     *   h264_rtsp    - H264(RTSP)拉流
+     *   anjia_low_latency - Anjia (Low Latency)
+     */
+    fun getStreamProtocol(): String = getString(KEY_STREAM_PROTOCOL, "h264_raw")
+    fun setStreamProtocol(value: String) = putString(KEY_STREAM_PROTOCOL, value)
 }

@@ -41,6 +41,10 @@ import java.net.URL
  * 小车控制界面 - 横屏模式
  * 左摇杆控制前后，右摇杆控制左右转向，中间3D停止按钮
  * 支持语音控制：长按语音按钮开始录音，松开按钮自动停止录音并发送识别
+ *
+ * 支持的视频流协议（通过设置页面选择）：
+ *   H264裸流、MJPG压缩、OpenIPC、H265安佳协议、H264(WS)拉流、
+ *   H264大华/熊迈协议、H264(RTSP)拉流、Anjia(Low Latency)
  */
 class CarControlActivity : BaseActivity() {
 
@@ -53,6 +57,7 @@ class CarControlActivity : BaseActivity() {
     // 从设置读取的小车地址（onCreate 初始化）
     private var carHost = KVUtils.getCarHost()
     private var carPort = KVUtils.getCarPort()
+    private var currentProtocol = StreamProtocol.fromKey(KVUtils.getStreamProtocol())
 
     private lateinit var ivWifiStatus: ImageView
     private lateinit var tvWifiStatus: TextView
@@ -138,12 +143,20 @@ class CarControlActivity : BaseActivity() {
 
         setContentView(R.layout.activity_car_control)
 
-        // 从配置读取小车地址
+        // 从配置读取小车地址和协议
         carHost = KVUtils.getCarHost()
         carPort = KVUtils.getCarPort()
+        currentProtocol = StreamProtocol.fromKey(KVUtils.getStreamProtocol())
 
-        // 更新界面上的 IP 显示
-        findViewById<TextView>(R.id.tvIpAddress)?.text = "$carHost:$carPort"
+        // 更新界面上的 IP 和协议显示
+        val protocolLabel = currentProtocol.label
+        findViewById<TextView>(R.id.tvIpAddress)?.text = "$carHost:$carPort [$protocolLabel]"
+
+        // 如果协议未实现，显示提示
+        if (currentProtocol.status == ProtocolStatus.PENDING) {
+            Toast.makeText(this, "当前协议 $protocolLabel 尚未实现，视频预览不可用", Toast.LENGTH_LONG).show()
+            XLog.w(TAG, "Protocol $protocolLabel is not yet implemented")
+        }
 
         initViews()
         initDebugPanel()
@@ -155,7 +168,9 @@ class CarControlActivity : BaseActivity() {
         // 每次恢复时重新读取配置（设置可能已更改）
         carHost = KVUtils.getCarHost()
         carPort = KVUtils.getCarPort()
-        findViewById<TextView>(R.id.tvIpAddress)?.text = "$carHost:$carPort"
+        currentProtocol = StreamProtocol.fromKey(KVUtils.getStreamProtocol())
+        val protocolLabel = currentProtocol.label
+        findViewById<TextView>(R.id.tvIpAddress)?.text = "$carHost:$carPort [$protocolLabel]"
         handler.post(pingRunnable)
     }
 
